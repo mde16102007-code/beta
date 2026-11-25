@@ -164,7 +164,7 @@ body:not(.dm) .tok.gm{display:none}
 /* ВСТАВЬТЕ СВОЙ КОНФИГ из Firebase Console → Project settings. Включите Auth: Email/Password и Anonymous. */
 const CFG={apiKey:"AIzaSyCE434mAjYrQUhCLtGMK3GbHwuyf5pLQPY",authDomain:"stol-beta.firebaseapp.com",databaseURL:"https://stol-beta-default-rtdb.europe-west1.firebasedatabase.app",projectId:"stol-beta",appId:"1:426597944863:web:719472e2fb4acd27e70f2a"};
 firebase.initializeApp(CFG);
-const auth=firebase.auth(),db=firebase.database(),$=id=>document.getElementById(id);
+let auth=firebase.auth(),db=firebase.database();const $=id=>document.getElementById(id);
 const S={cam:{x:0,y:0,z:.5},maps:{},assets:{},toks:{},els:{},players:{},off:[],tool:'select',games:{},meta:{},rt:0};
 let sel=null,drag=null;const D={},P=new Map();
 const G=()=>db.ref('games/'+S.gid),R=p=>db.ref(`games/${S.gid}/${p}`);
@@ -194,15 +194,17 @@ async function renGame(){if(!sel)return;const n=(prompt('Новое назван
   await db.ref().update({[`games/${sel}/meta/name`]:n,[`users/${S.uid}/games/${sel}`]:n});S.games[sel]=n;renderGames()}
 async function delGame(){if(!sel||!confirm(`Удалить мир «${S.games[sel]}» навсегда?`))return;
   await db.ref(`games/${sel}`).remove();await db.ref(`users/${S.uid}/games/${sel}`).remove();delete S.games[sel];sel=null;renderGames()}
-async function join(){const id=$('jc').value.trim();if(!$('jn').value.trim())return toast('Введите ваше имя');if(!id)return toast('Введите код комнаты');
-  try{if(!auth.currentUser)await auth.signInAnonymously();S.uid=auth.currentUser.uid;
+async function join(){if(S.joining)return;const id=$('jc').value.trim();if(!$('jn').value.trim())return toast('Введите ваше имя');if(!id)return toast('Введите код комнаты');
+  S.joining=1;
+  try{if(!S.pApp){S.pApp=firebase.apps.find(a=>a.name==='player')||firebase.initializeApp(CFG,'player');auth=S.pApp.auth();db=S.pApp.database();await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);await new Promise(r=>{const u=auth.onAuthStateChanged(()=>{u();r()})})}
+    if(!auth.currentUser)await auth.signInAnonymously();S.uid=auth.currentUser.uid;
     if(!(await db.ref(`games/${id}/meta`).once('value')).exists())return toast('Комната не найдена. Проверьте код.');
-    enter(id)}catch(x){toast('Не удалось подключиться: '+x.message)}}
+    await enter(id)}catch(x){toast('Не удалось подключиться: '+x.message)}finally{S.joining=0}}
 
 /* ===== ВХОД В ИГРУ ===== */
 async function enter(id){
   if(!id)return toast('Сначала выберите мир');
-  S.gid=id;const m=(await R('meta').once('value')).val();if(!m)return toast('Мир не найден');
+  if(S.entered)return;S.entered=1;S.gid=id;let m;try{m=(await R('meta').once('value')).val()}catch(x){S.entered=0;return toast('Нет доступа: '+x.message)}if(!m){S.entered=0;return toast('Мир не найден')}
   S.meta=m;S.isDM=m.owner===S.uid;const nm=(($('s-join').hidden?'':$('jn').value)||'').trim().slice(0,24);S.name=nm||(S.isDM?'Мастер':'Игрок');
   document.body.classList.toggle('dm',S.isDM);$('lobby').hidden=true;$('app').hidden=false;$('vw').hidden=!S.isDM;
   const me=R('players/'+S.uid);me.set(S.name);me.onDisconnect().remove();
@@ -216,7 +218,7 @@ async function enter(id){
   R('assets').on('child_added',s=>{S.assets[s.key]=s.val();refreshImgs();Object.values(S.toks).forEach(renderTok)});
   R('log').limitToLast(50).on('child_added',s=>addLog(s.val()));
   if(S.isDM)R('gm/log').on('child_added',s=>addLog(s.val()));
-  R('ruler').on('value',s=>{const r=s.val();if(r&&r.u!==S.uid)drawRuler(r);else if(!r&&!S.ruling)clearRuler()});
+  R('ruler').on('value',s=>{S.rulers=s.val()||{};redrawRulers()});R('ruler/'+S.uid).onDisconnect().remove();
 }
 
 /* ===== КАРТЫ ===== */
@@ -240,13 +242,16 @@ function renderMaps(){const s=$('mapsel');if(!S.isDM)return;s.textContent='';
 $('mapsel').onchange=e=>openMap(e.target.value);
 ['bw','bh'].forEach(k=>$(k).onchange=()=>{const m=S.maps[S.mid],c=Math.min(200,Math.max(5,+$('bw').value||30)),r=Math.min(200,Math.max(5,+$('bh').value||20));G().child('maps/'+S.mid).update({w:c*m.grid,h:r*m.grid})});
 function center(){const m=S.maps[S.mid];S.cam.z=Math.min(1,innerWidth/m.w*.9,innerHeight/m.h*.9);S.cam.x=(innerWidth-m.w*S.cam.z)/2;S.cam.y=(innerHeight-m.h*S.cam.z)/2;apply()}
-function mapOp(op){const m=S.maps[S.mid];if(!S.isDM||!m)return;
+async function mapOp(op){const m=S.maps[S.mid];if(!S.isDM||!m)return;
   if(op==='ren'){const n=(prompt('Название карты:',m.name)||'').trim().slice(0,40);if(n)R(`maps/${S.mid}/name`).set(n)}
   else{const ks=Object.keys(S.maps);if(ks.length<2)return toast('Нельзя удалить последнюю карту');
     if(!confirm(`Удалить карту «${m.name}» со всеми токенами?`))return;
-    const rest=ks.filter(k=>k!==S.mid),u={[`maps/${S.mid}`]:null,[`tokens/${S.mid}`]:null,[`gm/${S.mid}`]:null};
-    if(S.meta.playerMap===S.mid)u['meta/playerMap']=rest[0];
-    if(m.img)u[`assets/${m.img}`]=null;G().update(u)}}
+    const rest=ks.filter(k=>k!==S.mid),mid=S.mid;let st='';
+    try{st='переключение';S.want=rest[0];if(S.meta.playerMap===mid)await R('meta/playerMap').set(rest[0]);
+      st='токены';const u={};for(const b of ['tokens','gm']){const sn=await R(`${b}/${mid}`).once('value');sn.forEach(c=>{u[`${b}/${mid}/${c.key}`]=null})}if(Object.keys(u).length)await G().update(u);
+      st='карта';await R(`maps/${mid}`).remove();
+      st='картинка';if(m.img)await R(`assets/${m.img}`).remove()}
+    catch(x){S.want=null;toast(`Не удалось удалить карту (шаг «${st}»): `+x.message)}}}
 $('mapfile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
   try{const c=await compress(f,4096,.92),a=ID(),mid=ID(),cols=30,rows=Math.max(5,Math.round(cols*c.h/c.w));
     await G().update({[`assets/${a}`]:c.url,[`maps/${mid}`]:{name:f.name.replace(/\.\w+$/,'').slice(0,40),img:a,w:cols*70,h:rows*70,grid:70}});
@@ -308,8 +313,8 @@ function renderInit(){const l=$('init');l.textContent='';const o=order();if(!o.l
   o.forEach(t=>{const d=document.createElement('div'),a=document.createElement('span'),b=document.createElement('b');
     d.className='ii'+(S.meta.turn===t.id?' turn':'');a.textContent=(!dm()&&t.own==='dm')?'Мастер':(t.n||'Токен');b.textContent=t.ini;d.append(a,b);l.append(d)})}
 function nextTurn(){const o=order();if(!S.isDM||!o.length)return;const i=o.findIndex(t=>t.id===S.meta.turn);R('meta/turn').set(o[(i+1)%o.length].id)}
-function renderPlayers(){const l=$('pl');l.textContent='';const n=Object.values(S.players);$('pc').textContent=n.length;
-  n.forEach(x=>{const d=document.createElement('div');d.textContent=x;l.append(d)});if(!$('menu').hidden)fillMenu()}
+function renderPlayers(){const l=$('pl');l.textContent='';const n=Object.entries(S.players);$('pc').textContent=n.length;
+  n.forEach(([u,x])=>{const d=document.createElement('div');d.textContent=x+(u===S.meta.owner?' 👑':'');l.append(d)});if(!$('menu').hidden)fillMenu()}
 function invite(){const l=`${location.origin}${location.pathname}?join=${S.gid}`;
   navigator.clipboard.writeText(l).then(()=>toast('Ссылка-приглашение скопирована'),()=>prompt('Скопируйте ссылку:',l))}
 
@@ -331,7 +336,7 @@ function addLog(l){const p=document.createElement('p'),mk=(tag,tx,c)=>{const e=d
     if(t.r){p.append('[');t.r.forEach((v,j)=>{if(j)p.append(', ');p.append(mk('span',v,!t.k[j]?'drop':v===t.fc?'crit':v===1?'fumble':''))});p.append(']')}else p.append(String(t.v))});
   p.append(' = ',mk('b',l.r));const lg=$('log');lg.prepend(p);while(lg.children.length>60)lg.lastChild.remove()}
 function buildDice(){const g=$('dg');
-  [4,6,8,10,12,20,100].forEach(n=>{const b=document.createElement('button');b.textContent='d'+n;if(n===20)b.className='gold';
+  [4,6,8,10,12,20,100].forEach(n=>{const b=document.createElement('button');b.textContent='d'+n;
     b.onclick=()=>doRoll(`${Math.max(1,+$('dc').value||1)}d${n}${bonus()}`);g.append(b)});
   [['Преим.','2d20kh1'],['Помеха','2d20kl1']].forEach(([l,f])=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>doRoll(f+bonus());g.append(b)});
   $('fx').onkeydown=e=>{if(e.key==='Enter'&&$('fx').value.trim())doRoll($('fx').value)}}
@@ -368,14 +373,14 @@ vp.addEventListener('pointermove',e=>{if(P.has(e.pointerId))P.set(e.pointerId,{x
   else if(drag.k==='bgm'){const b={...drag.b,x:drag.b.x+m.x-drag.ax,y:drag.b.y+m.y-drag.ay};S.maps[S.mid].bg=b;applyBg();drag.nb=b}
   else if(drag.k==='bgs'){const k=drag.b.w/drag.b.h,w=Math.max(100,drag.b.w+m.x-drag.ax),b={...drag.b,w,h:e.altKey?Math.max(100,drag.b.h+m.y-drag.ay):w/k};S.maps[S.mid].bg=b;applyBg();drag.nb=b}
   else if(drag.k==='ruler'){drag.b={x:sp(e,m.x),y:sp(e,m.y)};const r=curRuler(drag);drawRuler(r);
-    const n=Date.now();if(n-S.rt>60){S.rt=n;R('ruler').set({...r,u:S.uid,n:S.name})}}
+    const n=Date.now();if(n-S.rt>60){S.rt=n;R('ruler/'+S.uid).set({...r,n:S.name})}}
   else if(drag.k==='fog'){const x=$('rul').getContext('2d'),a=drag.a;clearRuler();x.fillStyle='#38bdf855';x.strokeStyle='#38bdf8';x.lineWidth=2/S.cam.z;
     x.fillRect(a.x,a.y,m.x-a.x,m.y-a.y);x.strokeRect(a.x,a.y,m.x-a.x,m.y-a.y)}});
 const endDrag=e=>{P.delete(e.pointerId);if(!drag)return;if(drag.k==='pinch'){if(P.size<2)drag=null;return}
   const d=drag,m=toMap(e);drag=null;
   if(d.k==='tok'){const t=d.t;if(d.moved){if(!e.altKey){t.x=snap(t.x);t.y=snap(t.y)}renderTok(t);G().child(path(t)).update({x:t.x,y:t.y})}else openMenu()}
   else if(d.k==='bgm'||d.k==='bgs'){if(d.nb)saveBg(d.nb)}
-  else if(d.k==='ruler'){S.ruling=false;clearRuler();R('ruler').remove()}
+  else if(d.k==='ruler'){S.ruling=false;S.myRuler=null;redrawRulers();R('ruler/'+S.uid).remove()}
   else if(d.k==='fog'){clearRuler();const x=Math.min(d.a.x,m.x),y=Math.min(d.a.y,m.y),w=Math.abs(m.x-d.a.x),h=Math.abs(m.y-d.a.y);
     if(w>5&&h>5)setFog([...(S.maps[S.mid].fog||[]),{t:$('fogact').value,x,y,w,h}])}};
 vp.addEventListener('pointerup',endDrag);vp.addEventListener('pointercancel',endDrag);
@@ -390,16 +395,17 @@ function saveBg(b){S.maps[S.mid].bg=b;applyBg();R(`maps/${S.mid}/bg`).set(b)}
 function bgFit(){const m=S.maps[S.mid];if(m)saveBg({x:0,y:0,w:m.w,h:m.h})}
 function asPlayer(){S.asPlayer=!S.asPlayer;document.body.classList.toggle('dm',dm());$('vw').classList.toggle('on',!!S.asPlayer);S.tool='';tool('select');closeMenu();$('mp').hidden=true;Object.values(S.toks).forEach(renderTok);renderInit()}
 function tool(t){S.tool=S.tool===t?'select':t;['select','ruler','fog','bg'].forEach(k=>$('t-'+k).classList.toggle('on',S.tool===k));
-  vp.className=S.tool;['ruler','fog','bg'].forEach(k=>$('o-'+k).hidden=S.tool!==k);$('ob').hidden=S.tool==='select';$('bgh').hidden=S.tool!=='bg';placeBgh();clearRuler();R('ruler').remove()}
+  vp.className=S.tool;['ruler','fog','bg'].forEach(k=>$('o-'+k).hidden=S.tool!==k);$('ob').hidden=S.tool==='select';$('bgh').hidden=S.tool!=='bg';placeBgh();S.myRuler=null;redrawRulers();R('ruler/'+S.uid).remove()}
 function curRuler(d){return{p:[d.a.x,d.a.y,d.b.x,d.b.y],s:$('rshape').value,a:+$('rangle').value||60,c:$('rcol').value}}
-function clearRuler(){const c=$('rul');c.getContext('2d').clearRect(0,0,c.width,c.height);$('dist').hidden=true}
-function drawRuler(r){const c=$('rul'),x=c.getContext('2d'),[a,b,cx,cy]=r.p,m=S.maps[S.mid];if(!m)return;
-  x.clearRect(0,0,c.width,c.height);x.strokeStyle=x.fillStyle=r.c;x.lineWidth=3/S.cam.z;
+function clearRuler(){const c=$('rul');c.getContext('2d').clearRect(0,0,c.width,c.height)}
+function paintRuler(x,r){const m=S.maps[S.mid],[a,b,cx,cy]=r.p,z=S.cam.z;if(!m)return;x.save();x.strokeStyle=x.fillStyle=r.c;x.lineWidth=3/z;
   const d=Math.hypot(cx-a,cy-b);x.beginPath();x.moveTo(a,b);x.lineTo(cx,cy);x.stroke();
-  if(r.s!=='line'){x.beginPath();if(r.s==='sphere')x.arc(a,b,d,0,7);
-    else{const an=Math.atan2(cy-b,cx-a),h=r.a*Math.PI/360;x.moveTo(a,b);x.arc(a,b,d,an-h,an+h);x.closePath()}
-    x.globalAlpha=.22;x.fill();x.globalAlpha=1;x.stroke()}
-  const el=$('dist');el.textContent=Math.round(d/m.grid*5)+' ft'+(r.n&&r.u!==S.uid?' · '+r.n:'');el.hidden=false}
+  if(r.s!=='line'){x.beginPath();if(r.s==='sphere')x.arc(a,b,d,0,7);else{const an=Math.atan2(cy-b,cx-a),h=r.a*Math.PI/360;x.moveTo(a,b);x.arc(a,b,d,an-h,an+h);x.closePath()}x.globalAlpha=.22;x.fill();x.globalAlpha=1;x.stroke()}
+  const t=Math.round(d/m.grid*5)+' ft'+(r.n?' · '+r.n:'');x.font=`bold ${15/z}px sans-serif`;const w=x.measureText(t).width+10/z;
+  x.fillStyle='#000c';x.fillRect(cx+8/z,cy-26/z,w,22/z);x.fillStyle='#fff';x.fillText(t,cx+13/z,cy-9/z);x.restore()}
+function redrawRulers(){clearRuler();const x=$('rul').getContext('2d');
+  Object.entries(S.rulers||{}).forEach(([u,r])=>{if(u!==S.uid&&r&&Array.isArray(r.p))paintRuler(x,r)});if(S.myRuler)paintRuler(x,S.myRuler)}
+function drawRuler(r){S.myRuler=r;redrawRulers()}
 function drawFog(){const c=$('fog'),x=c.getContext('2d');x.clearRect(0,0,c.width,c.height);
   ((S.maps[S.mid]||{}).fog||[]).forEach(r=>{x.globalCompositeOperation=r.t==='c'?'destination-out':'source-over';x.fillStyle='#000';x.fillRect(r.x,r.y,r.w,r.h)});
   x.globalCompositeOperation='source-over'}
