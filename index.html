@@ -128,6 +128,8 @@ body:not(.dm) .tok.gm{display:none}
     <button onclick="R('meta/playerMap').set(S.mid)">🚩 Игроки сюда</button>
     <label>Размер поля (клеток: ширина × высота)</label>
     <div class="row"><input id="bw" type="number" min="5" max="200"><input id="bh" type="number" min="5" max="200"></div>
+    <label>Клетка на картинке, px (подгонка сетки)</label><input id="gpx" type="number" min="20" max="400">
+    <label>Цена одной клетки</label><div class="row"><input id="gu" type="number" min="0.1" step="any"><select id="gun"><option>ft</option><option>м</option><option>км</option><option>миль</option><option>кл.</option></select></div>
   </section>
   <div id="ob" hidden>
     <span id="o-ruler" hidden><select id="rshape"><option value="line">Линия</option><option value="sphere">Сфера</option><option value="cone">Конус</option></select><input id="rcol" type="color" value="#bfa15f" aria-label="Цвет"><input id="rangle" type="number" value="60" style="width:60px" title="Угол конуса °"><label class="chk"><input type="checkbox" id="rsnap"> к сетке</label></span>
@@ -215,7 +217,7 @@ async function enter(id){
     else if(!S.mid||!S.maps[S.mid]){const k=S.maps[S.meta.playerMap]?S.meta.playerMap:Object.keys(S.maps)[0];if(k)openMap(k)}
     else applyMap();
     renderMaps()});
-  R('assets').on('child_added',s=>{S.assets[s.key]=s.val();refreshImgs();Object.values(S.toks).forEach(renderTok)});
+  
   R('log').limitToLast(50).on('child_added',s=>addLog(s.val()));
   if(S.isDM)R('gm/log').on('child_added',s=>addLog(s.val()));
   R('ruler').on('value',s=>{S.rulers=s.val()||{};redrawRulers()});R('ruler/'+S.uid).onDisconnect().remove();
@@ -232,15 +234,20 @@ function openMap(mid){
 function applyMap(){const m=S.maps[S.mid];if(!m)return;
   const mp=$('map');mp.style.width=m.w+'px';mp.style.height=m.h+'px';mp.style.setProperty('--gs',m.grid+'px');
   for(const c of [$('fog'),$('rul')]){if(c.width!==m.w)c.width=m.w;if(c.height!==m.h)c.height=m.h}
-  refreshImgs();drawFog();applyBg();if(document.activeElement!==$('bw'))$('bw').value=Math.round(m.w/m.grid);if(document.activeElement!==$('bh'))$('bh').value=Math.round(m.h/m.grid);
+  refreshImgs();drawFog();applyBg();if(document.activeElement!==$('bw'))$('bw').value=Math.round(m.w/m.grid);if(document.activeElement!==$('bh'))$('bh').value=Math.round(m.h/m.grid);if(document.activeElement!==$('gpx'))$('gpx').value=m.grid;if(document.activeElement!==$('gu'))$('gu').value=m.unit||5;$('gun').value=m.un||'ft';
   $('mapname').textContent=m.name;Object.values(S.toks).forEach(renderTok)}
-function refreshImgs(){const m=S.maps[S.mid],im=$('img');if(!m)return;
+function need(id){if(!id||S.assets[id])return;S.pend=S.pend||{};if(S.pend[id])return;S.pend[id]=1;
+  R('assets/'+id).once('value').then(sn=>{if(sn.exists()){S.assets[id]=sn.val();refreshImgs();Object.values(S.toks).filter(t=>t.img===id).forEach(renderTok)}}).catch(()=>{delete S.pend[id]})}
+function refreshImgs(){const m=S.maps[S.mid],im=$('img');if(!m)return;need(m.img);
   if(m.img&&S.assets[m.img]){if(im.dataset.a!==m.img){im.src=S.assets[m.img];im.dataset.a=m.img}}
   else if(!m.img){im.removeAttribute('src');delete im.dataset.a}}
 function renderMaps(){const s=$('mapsel');if(!S.isDM)return;s.textContent='';
   Object.entries(S.maps).forEach(([k,m])=>{const o=document.createElement('option');o.value=k;o.textContent=(k===S.meta.playerMap?'🚩 ':'')+m.name;o.selected=k===S.mid;s.append(o)})}
 $('mapsel').onchange=e=>openMap(e.target.value);
 ['bw','bh'].forEach(k=>$(k).onchange=()=>{const m=S.maps[S.mid],c=Math.min(200,Math.max(5,+$('bw').value||30)),r=Math.min(200,Math.max(5,+$('bh').value||20));G().child('maps/'+S.mid).update({w:c*m.grid,h:r*m.grid})});
+$('gpx').oninput=()=>{const v=Math.min(400,Math.max(20,+$('gpx').value||70)),m=S.maps[S.mid];if(!m)return;m.grid=v;applyMap();clearTimeout(D.g);D.g=setTimeout(()=>R(`maps/${S.mid}/grid`).set(v),300)};
+$('gu').onchange=()=>R(`maps/${S.mid}/unit`).set(Math.max(.1,+$('gu').value||5));
+$('gun').onchange=()=>R(`maps/${S.mid}/un`).set($('gun').value);
 function center(){const m=S.maps[S.mid];S.cam.z=Math.min(1,innerWidth/m.w*.9,innerHeight/m.h*.9);S.cam.x=(innerWidth-m.w*S.cam.z)/2;S.cam.y=(innerHeight-m.h*S.cam.z)/2;apply()}
 async function mapOp(op){const m=S.maps[S.mid];if(!S.isDM||!m)return;
   if(op==='ren'){const n=(prompt('Название карты:',m.name)||'').trim().slice(0,40);if(n)R(`maps/${S.mid}/name`).set(n)}
@@ -275,7 +282,7 @@ function renderTok(t){const m=S.maps[S.mid];if(!m)return;let e=S.els[t.id];
   const px=(t.sz||1)*m.grid,seeHp=dm()||t.own===S.uid||t.own==='all'||t.showHp,im=e.children[0];
   e.className=`tok ${t.layer||'token'}${sel===t.id?' sel':''}${S.meta.turn===t.id?' turn':''}`;
   Object.assign(e.style,{left:t.x+'px',top:t.y+'px',width:px+'px',height:px+'px'});
-  const u=S.assets[t.img];if(u&&im.dataset.a!==t.img){im.src=u;im.dataset.a=t.img}
+  need(t.img);const u=S.assets[t.img];if(u&&im.dataset.a!==t.img){im.src=u;im.dataset.a=t.img}
   im.style.transform=`rotate(${t.rot||0}deg)`;
   const hp=e.children[1];hp.hidden=!(seeHp&&t.mhp>0);hp.firstChild.style.width=Math.max(0,Math.min(100,(t.hp||0)/(t.mhp||1)*100))+'%';
   e.children[2].textContent=t.n||'';e.children[3].textContent=t.ac||'';
@@ -309,7 +316,8 @@ function closeMenu(){$('menu').hidden=true}
 
 /* ===== ИНИЦИАТИВА И ИГРОКИ ===== */
 const order=()=>Object.values(S.toks).filter(t=>t.ini>0&&(dm()||t.layer!=='gm')).sort((a,b)=>b.ini-a.ini||a.id.localeCompare(b.id));
-function renderInit(){const l=$('init');l.textContent='';const o=order();if(!o.length){l.textContent='Пока никого';return}
+function renderInit(){clearTimeout(S.ri);S.ri=setTimeout(renderInitNow,120)}
+function renderInitNow(){const l=$('init');l.textContent='';const o=order();if(!o.length){l.textContent='Пока никого';return}
   o.forEach(t=>{const d=document.createElement('div'),a=document.createElement('span'),b=document.createElement('b');
     d.className='ii'+(S.meta.turn===t.id?' turn':'');a.textContent=(!dm()&&t.own==='dm')?'Мастер':(t.n||'Токен');b.textContent=t.ini;d.append(a,b);l.append(d)})}
 function nextTurn(){const o=order();if(!S.isDM||!o.length)return;const i=o.findIndex(t=>t.id===S.meta.turn);R('meta/turn').set(o[(i+1)%o.length].id)}
@@ -399,9 +407,10 @@ function tool(t){S.tool=S.tool===t?'select':t;['select','ruler','fog','bg'].forE
 function curRuler(d){return{p:[d.a.x,d.a.y,d.b.x,d.b.y],s:$('rshape').value,a:+$('rangle').value||60,c:$('rcol').value}}
 function clearRuler(){const c=$('rul');c.getContext('2d').clearRect(0,0,c.width,c.height)}
 function paintRuler(x,r){const m=S.maps[S.mid],[a,b,cx,cy]=r.p,z=S.cam.z;if(!m)return;x.save();x.strokeStyle=x.fillStyle=r.c;x.lineWidth=3/z;
-  const d=Math.hypot(cx-a,cy-b);x.beginPath();x.moveTo(a,b);x.lineTo(cx,cy);x.stroke();
+  const d=Math.hypot(cx-a,cy-b),an2=Math.atan2(cy-b,cx-a),ah=Math.min(22/z,d/2);x.lineCap='round';x.beginPath();x.moveTo(a,b);x.lineTo(cx,cy);x.stroke();
+  x.beginPath();x.moveTo(cx,cy);x.lineTo(cx-ah*Math.cos(an2-.45),cy-ah*Math.sin(an2-.45));x.lineTo(cx-ah*Math.cos(an2+.45),cy-ah*Math.sin(an2+.45));x.closePath();x.fill();
   if(r.s!=='line'){x.beginPath();if(r.s==='sphere')x.arc(a,b,d,0,7);else{const an=Math.atan2(cy-b,cx-a),h=r.a*Math.PI/360;x.moveTo(a,b);x.arc(a,b,d,an-h,an+h);x.closePath()}x.globalAlpha=.22;x.fill();x.globalAlpha=1;x.stroke()}
-  const t=Math.round(d/m.grid*5)+' ft'+(r.n?' · '+r.n:'');x.font=`bold ${15/z}px sans-serif`;const w=x.measureText(t).width+10/z;
+  const t=Math.round(d/m.grid*(m.unit||5)*10)/10+' '+(m.un||'ft')+(r.n?' · '+r.n:'');x.font=`bold ${15/z}px sans-serif`;const w=x.measureText(t).width+10/z;
   x.fillStyle='#000c';x.fillRect(cx+8/z,cy-26/z,w,22/z);x.fillStyle='#fff';x.fillText(t,cx+13/z,cy-9/z);x.restore()}
 function redrawRulers(){clearRuler();const x=$('rul').getContext('2d');
   Object.entries(S.rulers||{}).forEach(([u,r])=>{if(u!==S.uid&&r&&Array.isArray(r.p))paintRuler(x,r)});if(S.myRuler)paintRuler(x,S.myRuler)}
