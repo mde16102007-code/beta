@@ -1,293 +1,416 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Архивный НРИ Стол</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>НРИ Стол</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+:root{--p:#18181b;--l:#3f3f46;--g:#bfa15f;--b:#38bdf8}
+*{box-sizing:border-box}
+body{margin:0;background:#080808;color:#e4e4e7;font:13px 'Segoe UI',system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none}
+[hidden]{display:none!important}
+body:not(.dm) .dm{display:none!important}
+button,input,select{font:inherit;background:#27272a;color:#f4f4f5;border:1px solid #52525b;border-radius:6px;padding:6px 8px;min-width:0;outline:none}
+button{cursor:pointer}button:hover{background:#3f3f46}
+button.on,button.gold{background:var(--g);color:#121212;border-color:var(--g);font-weight:700}
+button.red{background:#7f1d1d;border-color:#991b1b}
+:focus-visible{outline:2px solid var(--b);outline-offset:1px}
+.row{display:flex;gap:6px}.row>*{flex:1}
+label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:#a1a1aa}
+label.chk{flex-direction:row;align-items:center;gap:6px;cursor:pointer}
+#lobby{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#121214;z-index:99}
+.box{width:min(380px,92vw);background:var(--p);border:1px solid var(--g);border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:10px}
+.box h2{margin:0 0 4px;text-align:center;color:var(--g);font-size:19px}
+.box input{padding:10px;font-size:14px}.box button{padding:10px}
+#list{max-height:190px;overflow:auto;display:flex;flex-direction:column;gap:5px}
+.gi{padding:8px 10px;border:1px solid var(--l);border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;gap:8px;background:#111}
+.gi.sel{border-color:var(--g);background:#27272a}.gi small{color:#71717a;overflow:hidden;text-overflow:ellipsis}
+#vp{position:fixed;inset:0;touch-action:none;overflow:hidden;cursor:grab}
+#vp.ruler,#vp.fog{cursor:crosshair}
+#world{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+#map{position:relative;background:#27272a;box-shadow:0 0 40px #000}
+#img{display:block;width:100%;height:100%;pointer-events:none}
+#img:not([src]){visibility:hidden}
+#map.grid::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:1;background-image:linear-gradient(#ffffff30 1px,transparent 1px),linear-gradient(90deg,#ffffff30 1px,transparent 1px);background-size:var(--gs) var(--gs)}
+canvas{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+#fog{z-index:5}body.dm #fog{opacity:.5}#rul{z-index:6}
+#toks .tok{position:absolute;z-index:3;font-size:calc(var(--gs)*.16)}
+.tok.item{z-index:2}.tok.gm{opacity:.55}
+.tok .im{width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;transition:transform .08s}
+.tok.sel .im{filter:drop-shadow(0 0 .6em var(--b))}
+.tok.turn .im{filter:drop-shadow(0 0 .8em #eab308);animation:pulse 1.4s infinite alternate}
+@keyframes pulse{to{filter:drop-shadow(0 0 1.4em #fde047)}}
+@media(prefers-reduced-motion:reduce){.tok.turn .im{animation:none}}
+.hp{position:absolute;left:0;right:0;top:100%;margin-top:.2em;height:.6em;background:#000b;border:1px solid #000;border-radius:3px;overflow:hidden}
+.hp i{display:block;height:100%;background:#22c55e}
+.nm{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:1em;white-space:nowrap;background:#0a0a0ce6;border:1px solid #52525b;border-radius:6px;padding:.1em .6em;font-weight:600}
+.ac{position:absolute;left:-.4em;top:-.4em;min-width:2em;height:2em;padding:0 .3em;border-radius:99px;background:#18181b;border:.15em solid var(--g);color:#fef08a;font-weight:700;font-size:1.2em;display:flex;align-items:center;justify-content:center;z-index:4}
+.st{position:absolute;left:50%;bottom:100%;transform:translateX(-50%);white-space:nowrap;font-size:1.8em;z-index:4;line-height:1}
+.ac:empty,.nm:empty,.st:empty{display:none}
+aside{position:fixed;top:10px;bottom:10px;display:flex;flex-direction:column;gap:8px;z-index:50;pointer-events:none;overflow-y:auto;scrollbar-width:none}
+aside>section{pointer-events:auto;background:#18181bf5;border:1px solid var(--l);border-radius:8px;padding:9px;display:flex;flex-direction:column;gap:6px}
+#R{right:10px;width:240px}
+h4{margin:0 0 2px;color:var(--g);font-size:12px;text-align:center;border-bottom:1px solid var(--l);padding-bottom:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+#log{flex:1;overflow:auto;background:#141416;border:1px solid var(--l);border-radius:4px;padding:4px 6px;min-height:80px;font-size:12px;user-select:text}
+#log p{margin:0;padding:4px 0;border-bottom:1px solid #27272a;line-height:1.35}
+.crit{color:#22c55e;font-weight:700}.fumble{color:#ef4444;font-weight:700}.drop{opacity:.4;text-decoration:line-through}
+.tag{background:var(--g);color:#121212;font-weight:700;font-size:10px;padding:0 4px;border-radius:3px;margin-right:4px}.tag.sec{background:#a855f7;color:#fff}
+#init{display:flex;flex-direction:column;gap:3px;max-height:130px;overflow:auto}
+.ii{display:flex;justify-content:space-between;padding:3px 7px;border:1px solid var(--l);border-radius:4px;background:#111}
+.ii.turn{border-color:#eab308;background:#eab30833}.ii b{color:var(--b)}
+#pl div{display:flex;align-items:center;gap:6px;padding:1px 0}
+#pl div::before{content:'';width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e}
+#menu{position:fixed;z-index:70;width:240px;max-height:88vh;overflow:auto;background:#18181bfa;border:1px solid var(--b);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;box-shadow:0 10px 25px #000c}
+#mf{display:flex;flex-direction:column;gap:6px}
+#stg{display:flex;flex-wrap:wrap;gap:4px}
+#stg span{font-size:17px;padding:2px 6px;border:1px solid var(--l);border-radius:4px;cursor:pointer;background:#111}
+#stg span.on{border-color:var(--b);background:#38bdf840}
+#dist{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:60;background:#18181bf2;border:1px solid var(--g);border-radius:20px;padding:6px 16px;font:700 15px monospace;color:#fff;pointer-events:none}
+#tg{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:60;padding:4px 14px}
+body.nopanel aside,body.nopanel nav{display:none}
+.toast{position:fixed;top:50px;left:50%;transform:translateX(-50%);z-index:999;background:#18181b;border:1px solid var(--g);padding:8px 16px;border-radius:8px;max-width:90vw}
+@media(max-width:800px){#R{width:190px}aside{font-size:12px}}
+#map{overflow:hidden}#img{position:absolute;max-width:none}
+body:not(.dm) .tok.gm{display:none}
+#L{position:fixed;left:10px;top:50%;transform:translateY(-50%);z-index:50;display:flex;flex-direction:column;gap:6px;background:#18181bf5;border:1px solid var(--l);border-radius:10px;padding:6px}
+#L button{width:42px;height:42px;font-size:19px;padding:0}
+.pop{position:fixed;left:68px;top:80px;z-index:55;width:230px;background:#18181bf5;border:1px solid var(--l);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px}
+#ob{position:fixed;top:52px;left:50%;transform:translateX(-50%);z-index:55;background:#18181bf5;border:1px solid var(--l);border-radius:8px;padding:6px 10px;display:flex;gap:6px;align-items:center;max-width:94vw}
+#ob span{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#tabs{display:flex;gap:4px}#tabs button{flex:1}#tabs button.on{background:var(--g);color:#121212;border-color:var(--g)}
+.tab{display:flex;flex-direction:column;gap:6px}
+#dg{grid-template-columns:repeat(3,1fr)}#log{flex:none;height:180px}
+#bgh{position:absolute;z-index:7;background:var(--b);border:2px solid #fff;border-radius:3px;cursor:nwse-resize;touch-action:none}
+#vw.on{background:var(--b);color:#000}
+</style>
 </head>
-<body oncontextmenu="return false;">
+<body oncontextmenu="return false">
 
-    <!-- ЛОББИ -->
-    <div id="lobby-screen">
-        <div class="lobby-box" id="lobby-step-1">
-            <h2>Добро пожаловать</h2>
-            <input type="text" id="player-nickname" placeholder="Ваше Имя" value="Игрок">
-            <button onclick="switchLobbyStep('dm-auth')">Я Мастер (DM)</button>
-            <button onclick="switchLobbyStep('player-join')" style="background: #3f3f46; color: white;">Я Игрок</button>
-        </div>
+<div id="lobby">
+  <div class="box" id="s-start"><h2>НРИ Стол</h2>
+    <button class="gold" onclick="dmStart()">Я Мастер</button>
+    <button onclick="show('s-join')">Я Игрок</button></div>
+  <div class="box" id="s-games" hidden><h2>Миры Мастера</h2>
+    <div id="list"></div>
+    <button onclick="newGame()">+ Создать мир</button>
+    <div class="row"><button onclick="renGame()">Переименовать</button><button class="red" onclick="delGame()">Удалить</button></div>
+    <button class="gold" onclick="enter(sel)">Запустить стол</button></div>
+  <div class="box" id="s-join" hidden><h2>Подключение</h2>
+    <input id="jn" placeholder="Ваше имя" maxlength="24"><input id="jc" placeholder="Код комнаты от Мастера">
+    <button class="gold" onclick="join()">Войти в мир</button>
+    <button onclick="show('s-start')">Назад</button></div>
+</div>
 
-        <div class="lobby-box" id="lobby-dm-auth" style="display:none;">
-            <h2>Аккаунт Мастера</h2>
-            <input type="text" id="dm-auth-user" placeholder="Логин Мастера">
-            <input type="password" id="dm-auth-pass" placeholder="Пароль">
-            <button onclick="handleDmAuth()" style="background:#22c55e; color:white;">Войти</button>
-            <button onclick="switchLobbyStep('1')" style="background:transparent; color:#a1a1aa; font-size:11px;">Назад</button>
-        </div>
+<div id="app" hidden>
+  <div id="vp"><div id="world"><div id="map" class="grid"><img id="img" alt=""><canvas id="fog"></canvas><canvas id="rul"></canvas><div id="toks"></div></div><div id="bgh" hidden></div></div></div>
+  <button id="tg" onclick="document.body.classList.toggle('nopanel')" aria-label="Панели">☰</button>
 
-        <div class="lobby-box" id="lobby-dm-dashboard" style="display:none; width: 400px;">
-            <h2 id="dm-dashboard-title">Миры Мастера</h2>
-            <div class="games-list" id="games-list-container"></div>
-            <button onclick="openGameEditor(false)" style="background:#0f766e;">+ Создать мир</button>
-            <div style="display:flex; gap: 5px;">
-                <button onclick="openGameEditor(true)" style="background:#374151;">Изменить</button>
-                <button id="btn-delete-game-dashboard" onclick="deleteGameClick()" style="background:#7f1d1d;">Удалить</button>
-            </div>
-            <hr style="border:0; border-top:1px solid #3f3f46; margin: 5px 0;">
-            <button onclick="launchGameDM()" style="background:#bfa15f; color:#121212; font-size:16px; padding:12px;">Запустить Стол 🚀</button>
-        </div>
+  <nav id="L">
+    <button class="dm" onclick="$('tokfile').click()" title="Добавить токен">➕</button>
+    <button id="t-select" class="on" onclick="tool('select')" title="Выбор и перемещение">🖐</button>
+    <button id="t-ruler" onclick="tool('ruler')" title="Линейка и области">📏</button>
+    <button id="t-fog" class="dm" onclick="tool('fog')" title="Туман войны">🌫</button>
+    <button id="t-bg" class="dm" onclick="tool('bg')" title="Двигать и растягивать фон">🖼</button>
+    <button onclick="$('map').classList.toggle('grid')" title="Сетка">▦</button>
+    <button class="dm" onclick="$('mp').hidden=!$('mp').hidden" title="Карты и размер поля">🗺</button>
+    <button id="vw" onclick="asPlayer()" title="Посмотреть как игрок" hidden>👁</button>
+    <input type="file" id="mapfile" accept="image/*" hidden><input type="file" id="tokfile" accept="image/*" hidden>
+  </nav>
+  <input id="zoom" type="range" min=".08" max="2.5" step=".02" value=".5" style="position:fixed;left:10px;bottom:14px;width:120px;z-index:50" aria-label="Масштаб">
+  <section id="mp" class="pop dm" hidden>
+    <h4 id="mapname">Карта</h4>
+    <select id="mapsel"></select>
+    <div class="row"><button onclick="$('mapfile').click()">+ Карта</button><button onclick="mapOp('ren')" title="Переименовать">✏️</button><button class="red" onclick="mapOp('del')" title="Удалить">🗑</button></div>
+    <button onclick="R('meta/playerMap').set(S.mid)">🚩 Игроки сюда</button>
+    <label>Размер поля (клеток: ширина × высота)</label>
+    <div class="row"><input id="bw" type="number" min="5" max="200"><input id="bh" type="number" min="5" max="200"></div>
+  </section>
+  <div id="ob" hidden>
+    <span id="o-ruler" hidden><select id="rshape"><option value="line">Линия</option><option value="sphere">Сфера</option><option value="cone">Конус</option></select><input id="rcol" type="color" value="#bfa15f" aria-label="Цвет"><input id="rangle" type="number" value="60" style="width:60px" title="Угол конуса °"><label class="chk"><input type="checkbox" id="rsnap"> к сетке</label></span>
+    <span id="o-fog" hidden><select id="fogact"><option value="f">Накрыть</option><option value="c">Открыть</option></select><button onclick="fogOp('undo')">↶</button><button onclick="fogOp('fill')">Закрыть всё</button><button onclick="fogOp('clear')">Открыть всё</button></span>
+    <span id="o-bg" hidden>Тяните фон мышью, за синий уголок — размер (Alt — без сохранения пропорций) <button onclick="bgFit()">Растянуть на поле</button></span>
+  </div>
+  <aside id="R">
+    <section>
+      <div id="tabs"><button class="on" data-t="t1">🎲 Кубы</button><button data-t="t2">⚔ Бой</button><button data-t="t3">👥 <span id="pc">0</span></button></div>
+      <div id="t1" class="tab">
+        <div class="row"><label>Кол-во<input id="dc" type="number" value="1" min="1" max="50"></label><label>Бонус<input id="db" type="number" value="0"></label></div>
+        <div class="grid" id="dg"></div>
+        <input id="fx" placeholder="2d6+4, 2d20kh1 — Enter">
+        <label class="chk"><input type="checkbox" id="secret"> 🔒 Втайне</label>
+        <div id="log"></div>
+      </div>
+      <div id="t2" class="tab" hidden><div id="init"></div><button class="gold dm" onclick="nextTurn()">Следующий ход ➔</button></div>
+      <div id="t3" class="tab" hidden><div id="pl"></div><button onclick="invite()">🔗 Пригласить</button></div>
+    </section>
+  </aside>
 
-        <div class="lobby-box" id="lobby-dm-edit" style="display:none;">
-            <h2>Настройка Мира</h2>
-            <input type="text" id="edit-game-name" placeholder="Название игры">
-            <button onclick="saveGameChanges()" style="background:#22c55e; color:white;">Сохранить</button>
-            <button onclick="switchLobbyStep('dm-dashboard')" style="background:#3f3f46; color:white;">Отмена</button>
-        </div>
+  <div id="menu" hidden>
+    <div id="mf"></div>
+    <label class="dm">Слой<select id="f-layer"><option value="token">Токен</option><option value="item">Предмет</option><option value="gm">GM (скрыт от игроков)</option></select></label>
+    <label class="dm">Управляет<select id="f-own"></select></label>
+    <label class="chk dm"><input type="checkbox" id="f-showHp"> Показывать HP игрокам</label>
+    <div id="stg"></div>
+    <button class="red dm" onclick="killTok()">❌ Удалить токен</button>
+  </div>
+  <div id="dist" hidden></div>
+</div>
 
-        <div class="lobby-box" id="lobby-player-join" style="display:none;">
-            <h2>Подключение к игре</h2>
-            <label style="font-size: 11px; color: #a1a1aa;">Ваше имя в игре:</label>
-            <input type="text" id="lobby-join-nickname" placeholder="Ваше Имя" value="Игрок">
-            <label style="font-size: 11px; color: #a1a1aa; margin-top: 5px;">Код партии:</label>
-            <input type="text" id="player-game-code" placeholder="Код комнаты (от Мастера)">
-            <button onclick="launchGamePlayer()">Войти в мир</button>
-            <button onclick="switchLobbyStep('1')" style="background:transparent; color:#a1a1aa; font-size:11px;">Назад</button>
-        </div>
-    </div>
+<script>
+/* ВСТАВЬТЕ СВОЙ КОНФИГ из Firebase Console → Project settings. Включите Auth: Email/Password и Anonymous. */
+const CFG={apiKey:"AIzaSyCE434mAjYrQUhCLtGMK3GbHwuyf5pLQPY",authDomain:"stol-beta.firebaseapp.com",databaseURL:"https://stol-beta-default-rtdb.europe-west1.firebasedatabase.app",projectId:"stol-beta",appId:"1:426597944863:web:719472e2fb4acd27e70f2a"};
+firebase.initializeApp(CFG);
+const auth=firebase.auth(),db=firebase.database(),$=id=>document.getElementById(id);
+const S={cam:{x:0,y:0,z:.5},maps:{},assets:{},toks:{},els:{},players:{},off:[],tool:'select',games:{},meta:{},rt:0};
+let sel=null,drag=null;const D={},P=new Map();
+const G=()=>db.ref('games/'+S.gid),R=p=>db.ref(`games/${S.gid}/${p}`);
+const ST={dead:'💀',poison:'🤢',stun:'💫',fire:'🔥',ice:'❄️',shock:'⚡',shield:'🛡️',invis:'👁️',sleep:'💤'};
+const FLD=[['n','Имя','text'],['hp','HP','number'],['mhp','Макс. HP','number'],['ac','КЗ','text'],['ini','Инициатива','number'],['sz','Размер (клеток)','number',.5,1],['rot','Поворот °','number',15]];
+const dm=()=>S.isDM&&!S.asPlayer,can=t=>dm()||t.own==='all'||t.own===S.uid;
+const path=t=>`${t.layer==='gm'?'gm':'tokens'}/${S.mid}/${t.id}`;
+const nick=()=>($('nick').value.trim()||'Игрок').slice(0,24);
+const rnd=n=>{const a=new Uint32Array(1),lim=4294967296-4294967296%n;let x;do{crypto.getRandomValues(a);x=a[0]}while(x>=lim);return x%n+1};
+function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),3500)}
+function show(id){document.querySelectorAll('.box').forEach(b=>b.hidden=b.id!==id)}
+const ID=()=>db.ref().push().key;
 
-    <!-- ВЫДВИЖНАЯ ПАНЕЛЬ КАРТ -->
-    <div id="maps-drawer-container" class="dm-only">
-        <div id="maps-drawer-toggle" onclick="toggleMapsDrawer()">
-            <span>🗺️ Карта: <span id="current-map-title-display">...</span></span>
-            <span id="drawer-arrow-icon">▼</span>
-        </div>
-        <div id="maps-drawer-content">
-            <div id="maps-cards-list" style="display: flex; gap: 10px;"></div>
-            <input type="file" id="map-library-upload" accept="image/*" style="display:none;">
-            <div class="add-map-card dm-only" onclick="document.getElementById('map-library-upload').click()">
-                <span style="font-size: 24px;">+</span>
-                <span style="font-size: 11px; margin-top: 4px;">Добавить карту</span>
-            </div>
-        </div>
-    </div>
+/* ===== ЛОББИ ===== */
+async function dmStart(){try{if(!auth.currentUser)await auth.signInAnonymously();S.uid=auth.currentUser.uid;await loadGames();show('s-games')}catch(x){toast('Ошибка входа: '+x.message)}}
+async function loadGames(){S.games=(await db.ref(`users/${S.uid}/games`).once('value')).val()||{};renderGames()}
+function renderGames(){const l=$('list');l.textContent='';
+  const ids=Object.keys(S.games);if(!ids.length)l.textContent='Миров пока нет. Создайте первый.';
+  ids.forEach(id=>{const d=document.createElement('div'),a=document.createElement('b'),c=document.createElement('small');
+    d.className='gi'+(id===sel?' sel':'');a.textContent=S.games[id];c.textContent='Код: '+id;d.append(a,c);d.onclick=()=>{sel=id;renderGames()};l.append(d)})}
+async function newGame(){const n=(prompt('Название мира:')||'').trim().slice(0,60);if(!n)return;
+  const id=db.ref('games').push().key,mid=ID();
+  await db.ref(`games/${id}/meta`).set({name:n,owner:S.uid,playerMap:mid});
+  await db.ref().update({[`games/${id}/maps/${mid}`]:{name:'Локация 1',w:2100,h:1400,grid:70},[`users/${S.uid}/games/${id}`]:n});
+  S.games[id]=n;sel=id;renderGames()}
+async function renGame(){if(!sel)return;const n=(prompt('Новое название:',S.games[sel])||'').trim().slice(0,60);if(!n)return;
+  await db.ref().update({[`games/${sel}/meta/name`]:n,[`users/${S.uid}/games/${sel}`]:n});S.games[sel]=n;renderGames()}
+async function delGame(){if(!sel||!confirm(`Удалить мир «${S.games[sel]}» навсегда?`))return;
+  await db.ref(`games/${sel}`).remove();await db.ref(`users/${S.uid}/games/${sel}`).remove();delete S.games[sel];sel=null;renderGames()}
+async function join(){const id=$('jc').value.trim();if(!$('jn').value.trim())return toast('Введите ваше имя');if(!id)return toast('Введите код комнаты');
+  try{if(!auth.currentUser)await auth.signInAnonymously();S.uid=auth.currentUser.uid;
+    if(!(await db.ref(`games/${id}/meta`).once('value')).exists())return toast('Комната не найдена. Проверьте код.');
+    enter(id)}catch(x){toast('Не удалось подключиться: '+x.message)}}
 
-    <!-- ЛЕВАЯ БОКОВАЯ ПАНЕЛЬ -->
-    <div class="left-sidebar">
-        <div class="sidebar-block">
-            <h4>Инструменты</h4>
-            
-            <div class="dm-only" style="margin-bottom: 6px;">
-                <input type="file" id="token-upload" accept="image/*" style="display:none;">
-                <button style="background: #22c55e; color: black; width: 100%; font-weight: bold;" onclick="document.getElementById('token-upload').click()">+ Добавить Токен</button>
-            </div>
+/* ===== ВХОД В ИГРУ ===== */
+async function enter(id){
+  if(!id)return toast('Сначала выберите мир');
+  S.gid=id;const m=(await R('meta').once('value')).val();if(!m)return toast('Мир не найден');
+  S.meta=m;S.isDM=m.owner===S.uid;const nm=(($('s-join').hidden?'':$('jn').value)||'').trim().slice(0,24);S.name=nm||(S.isDM?'Мастер':'Игрок');
+  document.body.classList.toggle('dm',S.isDM);$('lobby').hidden=true;$('app').hidden=false;$('vw').hidden=!S.isDM;
+  const me=R('players/'+S.uid);me.set(S.name);me.onDisconnect().remove();
+  R('players').on('value',s=>{S.players=s.val()||{};renderPlayers()});
+  R('meta').on('value',s=>{const v=s.val();if(!v)return;S.meta=v;if(!S.isDM&&S.mid!==v.playerMap)openMap(v.playerMap);Object.values(S.toks).forEach(renderTok);renderMaps();renderInit()});
+  R('maps').on('value',s=>{S.maps=s.val()||{};
+    if(S.want&&S.maps[S.want]){const w=S.want;S.want=null;openMap(w)}
+    else if(!S.mid||!S.maps[S.mid]){const k=S.maps[S.meta.playerMap]?S.meta.playerMap:Object.keys(S.maps)[0];if(k)openMap(k)}
+    else applyMap();
+    renderMaps()});
+  R('assets').on('child_added',s=>{S.assets[s.key]=s.val();refreshImgs();Object.values(S.toks).forEach(renderTok)});
+  R('log').limitToLast(50).on('child_added',s=>addLog(s.val()));
+  if(S.isDM)R('gm/log').on('child_added',s=>addLog(s.val()));
+  R('ruler').on('value',s=>{const r=s.val();if(r&&r.u!==S.uid)drawRuler(r);else if(!r&&!S.ruling)clearRuler()});
+}
 
-            <div class="dm-only" style="margin-bottom: 6px;">
-                <label style="font-size:10px; color:#aaa; display:block; margin-bottom:2px;">Активный слой:</label>
-                <select id="active-layer-select" onchange="changeActiveLayer()" style="width:100%;">
-                    <option value="token">Токены</option>
-                    <option value="item">Предметы</option>
-                    <option value="gm">GM (Скрыто)</option>
-                </select>
-            </div>
+/* ===== КАРТЫ ===== */
+function openMap(mid){
+  if(!S.maps[mid])return;if(S.mid===mid)return applyMap();
+  S.off.forEach(f=>f());S.off=[];S.mid=mid;S.toks={};S.els={};sel=null;$('toks').textContent='';closeMenu();
+  const watch=b=>{const r=R(`${b}/${mid}`),up=s=>upTok(s.val());
+    r.on('child_added',up);r.on('child_changed',up);r.on('child_removed',s=>rmTok(s.key,b));S.off.push(()=>r.off())};
+  watch('tokens');if(S.isDM)watch('gm');
+  applyMap();center();renderMaps();renderInit()}
+function applyMap(){const m=S.maps[S.mid];if(!m)return;
+  const mp=$('map');mp.style.width=m.w+'px';mp.style.height=m.h+'px';mp.style.setProperty('--gs',m.grid+'px');
+  for(const c of [$('fog'),$('rul')]){if(c.width!==m.w)c.width=m.w;if(c.height!==m.h)c.height=m.h}
+  refreshImgs();drawFog();applyBg();if(document.activeElement!==$('bw'))$('bw').value=Math.round(m.w/m.grid);if(document.activeElement!==$('bh'))$('bh').value=Math.round(m.h/m.grid);
+  $('mapname').textContent=m.name;Object.values(S.toks).forEach(renderTok)}
+function refreshImgs(){const m=S.maps[S.mid],im=$('img');if(!m)return;
+  if(m.img&&S.assets[m.img]){if(im.dataset.a!==m.img){im.src=S.assets[m.img];im.dataset.a=m.img}}
+  else if(!m.img){im.removeAttribute('src');delete im.dataset.a}}
+function renderMaps(){const s=$('mapsel');if(!S.isDM)return;s.textContent='';
+  Object.entries(S.maps).forEach(([k,m])=>{const o=document.createElement('option');o.value=k;o.textContent=(k===S.meta.playerMap?'🚩 ':'')+m.name;o.selected=k===S.mid;s.append(o)})}
+$('mapsel').onchange=e=>openMap(e.target.value);
+['bw','bh'].forEach(k=>$(k).onchange=()=>{const m=S.maps[S.mid],c=Math.min(200,Math.max(5,+$('bw').value||30)),r=Math.min(200,Math.max(5,+$('bh').value||20));G().child('maps/'+S.mid).update({w:c*m.grid,h:r*m.grid})});
+function center(){const m=S.maps[S.mid];S.cam.z=Math.min(1,innerWidth/m.w*.9,innerHeight/m.h*.9);S.cam.x=(innerWidth-m.w*S.cam.z)/2;S.cam.y=(innerHeight-m.h*S.cam.z)/2;apply()}
+function mapOp(op){const m=S.maps[S.mid];if(!S.isDM||!m)return;
+  if(op==='ren'){const n=(prompt('Название карты:',m.name)||'').trim().slice(0,40);if(n)R(`maps/${S.mid}/name`).set(n)}
+  else{const ks=Object.keys(S.maps);if(ks.length<2)return toast('Нельзя удалить последнюю карту');
+    if(!confirm(`Удалить карту «${m.name}» со всеми токенами?`))return;
+    const rest=ks.filter(k=>k!==S.mid),u={[`maps/${S.mid}`]:null,[`tokens/${S.mid}`]:null,[`gm/${S.mid}`]:null};
+    if(S.meta.playerMap===S.mid)u['meta/playerMap']=rest[0];
+    if(m.img)u[`assets/${m.img}`]=null;G().update(u)}}
+$('mapfile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{const c=await compress(f,4096,.92),a=ID(),mid=ID(),cols=30,rows=Math.max(5,Math.round(cols*c.h/c.w));
+    await G().update({[`assets/${a}`]:c.url,[`maps/${mid}`]:{name:f.name.replace(/\.\w+$/,'').slice(0,40),img:a,w:cols*70,h:rows*70,grid:70}});
+    S.want=mid}catch(x){toast('Не удалось загрузить карту: '+x.message)}};
+function compress(f,max,q){return new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const k=Math.min(1,max/Math.max(i.width,i.height)),c=document.createElement('canvas');
+  c.width=Math.round(i.width*k);c.height=Math.round(i.height*k);c.getContext('2d').drawImage(i,0,0,c.width,c.height);URL.revokeObjectURL(i.src);
+  let u=c.toDataURL('image/webp',q);while(u.length>7e6&&q>.5){q-=.1;u=c.toDataURL('image/webp',q)}ok({url:u,w:c.width,h:c.height})};i.onerror=()=>no(new Error('не картинка'));i.src=URL.createObjectURL(f)})}
 
-            <div class="tools-grid">
-                <button id="btn-mode-ruler" onclick="toggleRulerMode()">📏 Линейка</button>
-                <button id="btn-mode-fog" class="dm-only" onclick="toggleFogMode()">🌫️ Туман войны</button>
-            </div>
-            
-            <div id="ruler-options" style="display:none; flex-direction:column; gap:4px; margin-top:5px; border-top:1px solid #3f3f46; padding-top:5px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <label style="font-size:10px; color:#aaa;">Цвет линейки:</label>
-                    <input type="color" id="ruler-color" value="#bfa15f" style="width:30px; height:24px; padding:0; border:none;">
-                </div>
-                <label style="font-size:11px; color:#bfa15f;">Шаблон АОЕ:</label>
-                <select id="ruler-shape" onchange="updateRulerShapeUI()">
-                    <option value="line">📏 Линия</option>
-                    <option value="sphere">🔮 Сфера (Радиус)</option>
-                    <option value="cone">📐 Конус (Сектор)</option>
-                </select>
-                <div id="ruler-angle-container" style="display:none; justify-content:space-between; align-items:center; margin-top:3px;">
-                    <label style="font-size:10px; color:#aaa;">Угол °:</label>
-                    <input type="number" id="ruler-angle" value="60" style="width:55px; padding:2px;">
-                </div>
-            </div>
+/* ===== ТОКЕНЫ ===== */
+$('tokfile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f||!S.isDM)return;
+  try{const c=await compress(f,512,.9),a=ID(),id=ID(),p=toMap({clientX:innerWidth/2,clientY:innerHeight/2});
+    await G().update({[`assets/${a}`]:c.url,[`tokens/${S.mid}/${id}`]:{id,n:'Токен',img:a,x:snap(p.x),y:snap(p.y),sz:1,rot:0,hp:10,mhp:10,ac:'',ini:0,layer:'token',own:'dm',showHp:false}})}
+  catch(x){toast('Не удалось добавить токен: '+x.message)}};
+function upTok(t){if(!t)return;if(drag&&drag.k==='tok'&&drag.moved&&drag.t.id===t.id)return;
+  S.toks[t.id]=t;renderTok(t);if(sel===t.id&&!$('menu').hidden&&!$('menu').contains(document.activeElement))fillMenu();renderInit()}
+function rmTok(id,b){const t=S.toks[id];if(t&&(t.layer==='gm')!==(b==='gm'))return;
+  delete S.toks[id];if(S.els[id]){S.els[id].remove();delete S.els[id]}if(sel===id){sel=null;closeMenu()}renderInit()}
+function renderTok(t){const m=S.maps[S.mid];if(!m)return;let e=S.els[t.id];
+  if(!e){e=S.els[t.id]=document.createElement('div');e.dataset.id=t.id;
+    e.innerHTML='<img class="im" alt=""><div class="hp"><i></i></div><b class="nm"></b><span class="ac"></span><span class="st"></span>';$('toks').append(e)}
+  const px=(t.sz||1)*m.grid,seeHp=dm()||t.own===S.uid||t.own==='all'||t.showHp,im=e.children[0];
+  e.className=`tok ${t.layer||'token'}${sel===t.id?' sel':''}${S.meta.turn===t.id?' turn':''}`;
+  Object.assign(e.style,{left:t.x+'px',top:t.y+'px',width:px+'px',height:px+'px'});
+  const u=S.assets[t.img];if(u&&im.dataset.a!==t.img){im.src=u;im.dataset.a=t.img}
+  im.style.transform=`rotate(${t.rot||0}deg)`;
+  const hp=e.children[1];hp.hidden=!(seeHp&&t.mhp>0);hp.firstChild.style.width=Math.max(0,Math.min(100,(t.hp||0)/(t.mhp||1)*100))+'%';
+  e.children[2].textContent=t.n||'';e.children[3].textContent=t.ac||'';
+  e.children[4].textContent=Object.keys(t.st||{}).filter(k=>t.st[k]).map(k=>ST[k]).join('')}
+function select(id){const o=sel;sel=id;[o,id].forEach(i=>S.toks[i]&&renderTok(S.toks[i]));if(!id)closeMenu()}
+function write(t,prev){const u={};if(prev&&(prev==='gm')!==(t.layer==='gm'))u[path({...t,layer:prev})]=null;u[path(t)]=JSON.parse(JSON.stringify(t));G().update(u)}
+function edit(k,v){const t=S.toks[sel];if(!t||!can(t))return;
+  if(k==='layer'){const p=t.layer;t.layer=v;renderTok(t);return write(t,p)}
+  t[k]=v;renderTok(t);renderInit();clearTimeout(D[k]);D[k]=setTimeout(()=>G().child(path(t)).update({[k]:v}),250)}
+function killTok(){const t=S.toks[sel];if(!dm()||!t)return;G().child(path(t)).remove()}
+function buildMenu(){FLD.forEach(([k,l,ty,step,dm])=>{const lb=document.createElement('label'),i=document.createElement('input');
+  lb.textContent=l;i.type=ty;i.id='f-'+k;if(step)i.step=step;if(dm)lb.className='dm';
+  i.oninput=()=>edit(k,ty==='number'?(parseFloat(i.value)||0):i.value);lb.append(i);$('mf').append(lb)});
+  Object.entries(ST).forEach(([k,ic])=>{const s=document.createElement('span');s.textContent=ic;s.dataset.k=k;s.onclick=()=>{const t=S.toks[sel];if(!t||!can(t))return;
+    t.st={...(t.st||{}),[k]:!(t.st||{})[k]};renderTok(t);fillMenu();G().child(path(t)+'/st/'+k).set(t.st[k]||null)};$('stg').append(s)});
+  $('f-layer').onchange=e=>edit('layer',e.target.value);
+  $('f-own').onchange=e=>edit('own',e.target.value);
+  $('f-showHp').onchange=e=>edit('showHp',e.target.checked)}
+function fillMenu(){const t=S.toks[sel];if(!t)return;
+  FLD.forEach(([k])=>{const i=$('f-'+k);if(document.activeElement!==i)i.value=t[k]??''});
+  $('f-layer').value=t.layer||'token';$('f-showHp').checked=!!t.showHp;
+  const o=$('f-own');o.textContent='';
+  [['dm','Только Мастер'],['all','Все игроки'],...Object.entries(S.players).filter(([u])=>u!==S.meta.owner).map(([u,n])=>[u,'Игрок: '+n])]
+    .forEach(([v,l])=>{const x=document.createElement('option');x.value=v;x.textContent=l;o.append(x)});o.value=t.own||'dm';
+  document.querySelectorAll('#stg span').forEach(s=>s.classList.toggle('on',!!(t.st||{})[s.dataset.k]))}
+function openMenu(){const t=S.toks[sel];if(!t||!can(t))return;fillMenu();const m=$('menu');m.hidden=false;
+  const r=S.els[t.id].getBoundingClientRect();
+  m.style.left=Math.max(8,Math.min(r.right+10,innerWidth-m.offsetWidth-8))+'px';
+  m.style.top=Math.max(8,Math.min(r.top,innerHeight-m.offsetHeight-8))+'px'}
+function closeMenu(){$('menu').hidden=true}
 
-            <div id="fog-options" class="dm-only" style="display:none; flex-direction:column; gap:4px; margin-top:5px; border-top:1px solid #3f3f46; padding-top:5px;">
-                <label style="font-size:11px; color:#38bdf8;">Режим тумана:</label>
-                <select id="fog-action">
-                    <option value="hide">⬛ Накрыть туманом</option>
-                    <option value="reveal">⬜ Открыть карту</option>
-                </select>
-                <button onclick="clearAllFog()" style="background:#ef4444; color:#fff; margin-top:3px;">🧹 Сбросить весь туман</button>
-                <button onclick="fillAllFog()" style="background:#3b82f6; color:#fff;">⬛ Покрыть всю карту</button>
-            </div>
-        </div>
+/* ===== ИНИЦИАТИВА И ИГРОКИ ===== */
+const order=()=>Object.values(S.toks).filter(t=>t.ini>0&&(dm()||t.layer!=='gm')).sort((a,b)=>b.ini-a.ini||a.id.localeCompare(b.id));
+function renderInit(){const l=$('init');l.textContent='';const o=order();if(!o.length){l.textContent='Пока никого';return}
+  o.forEach(t=>{const d=document.createElement('div'),a=document.createElement('span'),b=document.createElement('b');
+    d.className='ii'+(S.meta.turn===t.id?' turn':'');a.textContent=(!dm()&&t.own==='dm')?'Мастер':(t.n||'Токен');b.textContent=t.ini;d.append(a,b);l.append(d)})}
+function nextTurn(){const o=order();if(!S.isDM||!o.length)return;const i=o.findIndex(t=>t.id===S.meta.turn);R('meta/turn').set(o[(i+1)%o.length].id)}
+function renderPlayers(){const l=$('pl');l.textContent='';const n=Object.values(S.players);$('pc').textContent=n.length;
+  n.forEach(x=>{const d=document.createElement('div');d.textContent=x;l.append(d)});if(!$('menu').hidden)fillMenu()}
+function invite(){const l=`${location.origin}${location.pathname}?join=${S.gid}`;
+  navigator.clipboard.writeText(l).then(()=>toast('Ссылка-приглашение скопирована'),()=>prompt('Скопируйте ссылку:',l))}
 
-        <div class="sidebar-block">
-            <h4>🎲 Броски кубов</h4>
-            <div class="dice-container">
-                <div style="display:flex; gap:5px; justify-content:space-between;">
-                    <label style="font-size: 10px;">К-во: <input type="number" id="dice-count" value="1" class="no-spinner" style="width:32px; padding:2px;"></label>
-                    <label style="font-size: 10px;">Бонус: <input type="number" id="dice-bonus" value="0" class="no-spinner" style="width:35px; padding:2px;"></label>
-                </div>
-                <div class="dice-grid">
-                    <button onclick="rollDice(4)">d4</button>
-                    <button onclick="rollDice(6)">d6</button>
-                    <button onclick="rollDice(8)">d8</button>
-                    <button onclick="rollDice(10)">d10</button>
-                    <button onclick="rollDice(12)">d12</button>
-                    <button onclick="rollDice(20)" style="color:#bfa15f;">d20</button>
-                </div>
-            </div>
-        </div>
+/* ===== КУБЫ ===== */
+function parseRoll(f){f=f.toLowerCase().replace(/\s/g,'');if(!/^[+-]?[^+-]+([+-][^+-]+)*$/.test(f))return null;let tot=0;const terms=[];
+  for(const s of f.match(/[+-]?[^+-]+/g)){const sg=s[0]==='-'?-1:1,b=s.replace(/^[+-]/,''),m=b.match(/^(\d*)d(\d+)(?:k([hl])(\d+))?$/);
+    if(m){const n=+m[1]||1,fc=+m[2];if(n>100||fc<2||fc>1000)return null;const r=Array.from({length:n},()=>rnd(fc));let k=r.map(()=>1);
+      if(m[3]){const idx=r.map((_,i)=>i).sort((i,j)=>m[3]==='h'?r[j]-r[i]:r[i]-r[j]);k=r.map(()=>0);idx.slice(0,+m[4]).forEach(i=>k[i]=1)}
+      tot+=sg*r.reduce((a,v,i)=>a+(k[i]?v:0),0);terms.push({s:sg,f:b,fc,r,k})}
+    else if(/^\d+$/.test(b)){tot+=sg*+b;terms.push({s:sg,v:+b})}else return null}
+  return{tot,terms}}
+function doRoll(f){if(!S.gid)return;const r=parseRoll(f);if(!r)return toast('Формула вида 2d6+4, 2d20kh1 или 4d6kh3+2');
+  const l={u:S.name,f,t:r.terms,r:r.tot,s:$('secret').checked?1:0,d:S.isDM?1:0,ts:firebase.database.ServerValue.TIMESTAMP};
+  if(l.s){addLog(l);if(!S.isDM)R('gm/log').push(l)}else R('log').push(l)}
+function addLog(l){const p=document.createElement('p'),mk=(tag,tx,c)=>{const e=document.createElement(tag);e.textContent=tx;if(c)e.className=c;return e};
+  if(l.d)p.append(mk('span','DM','tag'));if(l.s)p.append(mk('span','скрытно','tag sec'));
+  p.append(mk('b',l.u),` ${l.f}: `);
+  (l.t||[]).forEach((t,i)=>{p.append(i||t.s<0?(t.s<0?' − ':' + '):'');
+    if(t.r){p.append('[');t.r.forEach((v,j)=>{if(j)p.append(', ');p.append(mk('span',v,!t.k[j]?'drop':v===t.fc?'crit':v===1?'fumble':''))});p.append(']')}else p.append(String(t.v))});
+  p.append(' = ',mk('b',l.r));const lg=$('log');lg.prepend(p);while(lg.children.length>60)lg.lastChild.remove()}
+function buildDice(){const g=$('dg');
+  [4,6,8,10,12,20,100].forEach(n=>{const b=document.createElement('button');b.textContent='d'+n;if(n===20)b.className='gold';
+    b.onclick=()=>doRoll(`${Math.max(1,+$('dc').value||1)}d${n}${bonus()}`);g.append(b)});
+  [['Преим.','2d20kh1'],['Помеха','2d20kl1']].forEach(([l,f])=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>doRoll(f+bonus());g.append(b)});
+  $('fx').onkeydown=e=>{if(e.key==='Enter'&&$('fx').value.trim())doRoll($('fx').value)}}
+const bonus=()=>{const v=parseInt($('db').value)||0;return v?(v>0?'+':'')+v:''};
 
-        <div id="initiative-tracker">
-            <h4 onclick="toggleInitiativeTracker()">
-                <span>⚔️ Инициатива</span>
-                <span id="initiative-arrow">▼</span>
-            </h4>
-            <div class="initiative-list" id="initiative-list-container"></div>
-            <button id="btn-next-turn" onclick="nextTurn()" style="background:#bfa15f; color:#121212; font-weight:bold; margin-top:4px; width:100%; padding:5px; font-size:11px;">Следующий ход ➔</button>
-        </div>
-    </div>
+/* ===== КАМЕРА, ВВОД ===== */
+const vp=$('vp');
+const toMap=e=>({x:(e.clientX-S.cam.x)/S.cam.z,y:(e.clientY-S.cam.y)/S.cam.z});
+const snap=v=>{const g=S.maps[S.mid].grid;return Math.round(v/g)*g};
+const sp=(e,v)=>($('rsnap').checked||e.shiftKey)?snap(v):v;
+function apply(){$('world').style.transform=`translate(${S.cam.x}px,${S.cam.y}px) scale(${S.cam.z})`;$('zoom').value=S.cam.z;placeBgh()}
+function zoomAt(cx,cy,z){z=Math.min(2.5,Math.max(.08,z));const k=z/S.cam.z;S.cam.x=cx-(cx-S.cam.x)*k;S.cam.y=cy-(cy-S.cam.y)*k;S.cam.z=z;apply()}
+$('zoom').oninput=e=>zoomAt(innerWidth/2,innerHeight/2,+e.target.value);
+vp.addEventListener('wheel',e=>{e.preventDefault();const te=e.target.closest('.tok'),t=te&&S.toks[te.dataset.id];
+  if(e.shiftKey&&t&&can(t)){t.rot=((t.rot||0)+(e.deltaY>0?15:-15)+360)%360;renderTok(t);G().child(path(t)).update({rot:t.rot})}
+  else zoomAt(e.clientX,e.clientY,S.cam.z*(e.deltaY<0?1.1:.9))},{passive:false});
+const pinch=()=>{const [a,b]=[...P.values()];return{d:Math.hypot(a.x-b.x,a.y-b.y),x:(a.x+b.x)/2,y:(a.y+b.y)/2}};
+vp.addEventListener('pointerdown',e=>{if(!S.mid)return;vp.setPointerCapture(e.pointerId);P.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(P.size===2){drag={k:'pinch',d:pinch().d,z:S.cam.z};return}
+  const te=e.target.closest('.tok'),t=te&&S.toks[te.dataset.id],m=toMap(e),pan={k:'pan',sx:e.clientX,sy:e.clientY,cx:S.cam.x,cy:S.cam.y};
+  closeMenu();
+  if(e.button===1||e.button===2)drag=pan;
+  else if(S.tool==='bg'&&dm()){drag={k:e.target.id==='bgh'?'bgs':'bgm',b:{...bgOf(S.maps[S.mid])},ax:m.x,ay:m.y}}
+  else if(S.tool==='ruler'){S.ruling=true;drag={k:'ruler',a:{x:sp(e,m.x),y:sp(e,m.y)}}}
+  else if(S.tool==='fog'&&dm())drag={k:'fog',a:m}
+  else if(t&&can(t)){select(t.id);drag={k:'tok',t,ox:m.x-t.x,oy:m.y-t.y,moved:0,sx:e.clientX,sy:e.clientY}}
+  else{select(null);drag=pan}});
+vp.addEventListener('pointermove',e=>{if(P.has(e.pointerId))P.set(e.pointerId,{x:e.clientX,y:e.clientY});if(!drag||!S.mid)return;const m=toMap(e);
+  if(drag.k==='pan'){S.cam.x=drag.cx+e.clientX-drag.sx;S.cam.y=drag.cy+e.clientY-drag.sy;apply()}
+  else if(drag.k==='pinch'&&P.size===2){const p=pinch();zoomAt(p.x,p.y,drag.z*p.d/drag.d)}
+  else if(drag.k==='tok'){if(!drag.moved&&Math.hypot(e.clientX-drag.sx,e.clientY-drag.sy)<5)return;drag.moved=1;
+    const t=drag.t;t.x=m.x-drag.ox;t.y=m.y-drag.oy;renderTok(t);
+    const n=Date.now();if(n-(drag.ts||0)>80){drag.ts=n;G().child(path(t)).update({x:t.x,y:t.y})}}
+  else if(drag.k==='bgm'){const b={...drag.b,x:drag.b.x+m.x-drag.ax,y:drag.b.y+m.y-drag.ay};S.maps[S.mid].bg=b;applyBg();drag.nb=b}
+  else if(drag.k==='bgs'){const k=drag.b.w/drag.b.h,w=Math.max(100,drag.b.w+m.x-drag.ax),b={...drag.b,w,h:e.altKey?Math.max(100,drag.b.h+m.y-drag.ay):w/k};S.maps[S.mid].bg=b;applyBg();drag.nb=b}
+  else if(drag.k==='ruler'){drag.b={x:sp(e,m.x),y:sp(e,m.y)};const r=curRuler(drag);drawRuler(r);
+    const n=Date.now();if(n-S.rt>60){S.rt=n;R('ruler').set({...r,u:S.uid,n:S.name})}}
+  else if(drag.k==='fog'){const x=$('rul').getContext('2d'),a=drag.a;clearRuler();x.fillStyle='#38bdf855';x.strokeStyle='#38bdf8';x.lineWidth=2/S.cam.z;
+    x.fillRect(a.x,a.y,m.x-a.x,m.y-a.y);x.strokeRect(a.x,a.y,m.x-a.x,m.y-a.y)}});
+const endDrag=e=>{P.delete(e.pointerId);if(!drag)return;if(drag.k==='pinch'){if(P.size<2)drag=null;return}
+  const d=drag,m=toMap(e);drag=null;
+  if(d.k==='tok'){const t=d.t;if(d.moved){if(!e.altKey){t.x=snap(t.x);t.y=snap(t.y)}renderTok(t);G().child(path(t)).update({x:t.x,y:t.y})}else openMenu()}
+  else if(d.k==='bgm'||d.k==='bgs'){if(d.nb)saveBg(d.nb)}
+  else if(d.k==='ruler'){S.ruling=false;clearRuler();R('ruler').remove()}
+  else if(d.k==='fog'){clearRuler();const x=Math.min(d.a.x,m.x),y=Math.min(d.a.y,m.y),w=Math.abs(m.x-d.a.x),h=Math.abs(m.y-d.a.y);
+    if(w>5&&h>5)setFog([...(S.maps[S.mid].fog||[]),{t:$('fogact').value,x,y,w,h}])}};
+vp.addEventListener('pointerup',endDrag);vp.addEventListener('pointercancel',endDrag);
+addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
+  if(e.key==='Delete')killTok();if(e.key==='Escape'){select(null);tool('select')}});
 
-    <!-- ПРАВАЯ БОКОВАЯ ПАНЕЛЬ -->
-    <div class="right-sidebar">
-        <div class="sidebar-block">
-            <h4>Масштаб</h4>
-            <div class="zoom-block-content">
-                <input type="range" id="zoomRangeSide" class="zoom-slider-horiz" min="0.08" max="2.2" step="0.02" value="0.55" oninput="changeZoomSlider(this.value)">
-                <span id="zoomValueSide" style="font-size:11px; color:#bfa15f; white-space: nowrap;">100%</span>
-            </div>
-        </div>
+/* ===== ИНСТРУМЕНТЫ ===== */
+const bgOf=m=>m.bg||{x:0,y:0,w:m.w,h:m.h};
+function applyBg(){const m=S.maps[S.mid];if(!m)return;const b=bgOf(m);Object.assign($('img').style,{left:b.x+'px',top:b.y+'px',width:b.w+'px',height:b.h+'px'});placeBgh()}
+function placeBgh(){const m=S.maps[S.mid],h=$('bgh');if(!m||h.hidden)return;const b=bgOf(m),z=18/S.cam.z;Object.assign(h.style,{width:z+'px',height:z+'px',left:b.x+b.w-z/2+'px',top:b.y+b.h-z/2+'px'})}
+function saveBg(b){S.maps[S.mid].bg=b;applyBg();R(`maps/${S.mid}/bg`).set(b)}
+function bgFit(){const m=S.maps[S.mid];if(m)saveBg({x:0,y:0,w:m.w,h:m.h})}
+function asPlayer(){S.asPlayer=!S.asPlayer;document.body.classList.toggle('dm',dm());$('vw').classList.toggle('on',!!S.asPlayer);S.tool='';tool('select');closeMenu();$('mp').hidden=true;Object.values(S.toks).forEach(renderTok);renderInit()}
+function tool(t){S.tool=S.tool===t?'select':t;['select','ruler','fog','bg'].forEach(k=>$('t-'+k).classList.toggle('on',S.tool===k));
+  vp.className=S.tool;['ruler','fog','bg'].forEach(k=>$('o-'+k).hidden=S.tool!==k);$('ob').hidden=S.tool==='select';$('bgh').hidden=S.tool!=='bg';placeBgh();clearRuler();R('ruler').remove()}
+function curRuler(d){return{p:[d.a.x,d.a.y,d.b.x,d.b.y],s:$('rshape').value,a:+$('rangle').value||60,c:$('rcol').value}}
+function clearRuler(){const c=$('rul');c.getContext('2d').clearRect(0,0,c.width,c.height);$('dist').hidden=true}
+function drawRuler(r){const c=$('rul'),x=c.getContext('2d'),[a,b,cx,cy]=r.p,m=S.maps[S.mid];if(!m)return;
+  x.clearRect(0,0,c.width,c.height);x.strokeStyle=x.fillStyle=r.c;x.lineWidth=3/S.cam.z;
+  const d=Math.hypot(cx-a,cy-b);x.beginPath();x.moveTo(a,b);x.lineTo(cx,cy);x.stroke();
+  if(r.s!=='line'){x.beginPath();if(r.s==='sphere')x.arc(a,b,d,0,7);
+    else{const an=Math.atan2(cy-b,cx-a),h=r.a*Math.PI/360;x.moveTo(a,b);x.arc(a,b,d,an-h,an+h);x.closePath()}
+    x.globalAlpha=.22;x.fill();x.globalAlpha=1;x.stroke()}
+  const el=$('dist');el.textContent=Math.round(d/m.grid*5)+' ft'+(r.n&&r.u!==S.uid?' · '+r.n:'');el.hidden=false}
+function drawFog(){const c=$('fog'),x=c.getContext('2d');x.clearRect(0,0,c.width,c.height);
+  ((S.maps[S.mid]||{}).fog||[]).forEach(r=>{x.globalCompositeOperation=r.t==='c'?'destination-out':'source-over';x.fillStyle='#000';x.fillRect(r.x,r.y,r.w,r.h)});
+  x.globalCompositeOperation='source-over'}
+function setFog(f){if(!S.isDM)return;S.maps[S.mid].fog=f;drawFog();R(`maps/${S.mid}/fog`).set(f.length?f:null)}
+function fogOp(op){const m=S.maps[S.mid],f=m.fog||[];
+  if(op==='undo')setFog(f.slice(0,-1));else if(op==='clear')setFog([]);else setFog([{t:'f',x:0,y:0,w:m.w,h:m.h}])}
 
-        <div class="sidebar-block" id="players-sidebar-block">
-            <h4 onclick="togglePlayersPanel()" style="cursor:pointer; margin:0; display:flex; justify-content:space-between; width:100%;">
-                <span>👥 Игроки (<span id="online-count">0</span>)</span>
-                <span id="players-arrow">▼</span>
-            </h4>
-            <div id="players-online-list" style="display:none; margin-top:5px; max-height:120px; overflow-y:auto; flex-direction:column; gap:4px;"></div>
-            <button id="invite-btn" style="margin-top:7px; width:100%; background:#38bdf8; color:#121212; font-size:11px; font-weight:bold; padding:6px; border:none; border-radius:4px; cursor:pointer;" onclick="copyInviteLink()">🔗 Пригласить друзей</button>
-        </div>
-
-        <div class="sidebar-block" style="flex: 1; min-height: 180px; display:flex; flex-direction:column;">
-            <h4>📜 Лог кубов <span style="cursor:pointer; color:#ef4444; float:right;" class="dm-only" onclick="clearDiceLog()">🧹</span></h4>
-            <div class="dice-log" id="dice-log-box" style="flex: 1; overflow-y: auto;"></div>
-            
-            <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; border-top:1px solid #3f3f46; padding-top:6px;">
-                <input type="text" id="dice-formula-input" placeholder="Формула (2d6+4, Enter для броска)" style="font-size:11px; padding:4px;">
-                <label style="font-size: 10px; color: #a855f7; display: flex; align-items: center; gap: 4px; cursor: pointer;">
-                    <input type="checkbox" id="secret-roll-toggle"> 🔒 Бросок втайне
-                </label>
-            </div>
-        </div>
-    </div>
-
-    <!-- ИНДИКАТОР ЛИНЕЙКИ -->
-    <div id="ruler-distance-indicator">
-        <span id="ruler-distance-val">0 ft</span>
-    </div>
-
-    <!-- НАСТРОЙКИ ТОКЕНА (КОНТЕКСТНОЕ МЕНЮ С ПРОКРУТКОЙ ПРИ НЕОБХОДИМОСТИ) -->
-    <div id="token-menu" class="token-context-menu" onmousedown="event.stopPropagation()">
-        <div id="permissions-container-block" class="dm-only">
-            <label style="color:#38bdf8; font-weight:bold; margin-bottom: 2px;">Контролируется:</label>
-            <select id="ctx-owner-select" onchange="applyContextChanges()"></select>
-            <hr style="border:0; border-top:1px solid #3f3f46; margin: 4px 0;">
-        </div>
-
-        <label>Имя токена</label>
-        <input type="text" id="ctx-name" oninput="applyContextChanges()">
-        
-        <div class="context-row">
-            <div style="flex:1;">
-                <label style="color:#ef4444;">HP</label>
-                <div class="context-row"><input type="number" id="ctx-hp" class="no-spinner" oninput="applyContextChanges()" style="width:35px;">/ <input type="number" id="ctx-max-hp" class="no-spinner" oninput="applyContextChanges()" style="width:35px;"></div>
-            </div>
-            <div style="flex:1;">
-                <label style="color:#bfa15f;">КЗ (AC)</label>
-                <input type="text" id="ctx-ac" oninput="applyContextChanges()">
-            </div>
-            <div style="flex:1;">
-                <label style="color:#3b82f6;">Мана (MP)</label>
-                <div class="context-row"><input type="number" id="ctx-mp" class="no-spinner" oninput="applyContextChanges()" style="width:35px;">/ <input type="number" id="ctx-max-mp" class="no-spinner" oninput="applyContextChanges()" style="width:35px;"></div>
-            </div>
-        </div>
-
-        <div class="context-row" style="margin-top: 4px;">
-            <div style="flex:1;">
-                <label style="color:#38bdf8;">Инициатива</label>
-                <input type="number" id="ctx-initiative" placeholder="0" oninput="applyContextChanges()">
-            </div>
-            <div style="flex:1;" class="dm-only">
-                <label id="lbl-size">Размер (ft)</label>
-                <input type="number" id="ctx-size" step="2.5" oninput="applyContextChanges()">
-            </div>
-        </div>
-
-        <div class="context-row" style="margin-top: 4px;">
-            <div style="flex:1;">
-                <label style="color:#eab308;">Поворот (°)</label>
-                <input type="number" id="ctx-rotation" value="0" step="15" oninput="applyContextChanges()">
-            </div>
-            <div style="flex:1;" class="dm-only">
-                <label style="color:#a855f7;">Слой</label>
-                <select id="ctx-layer" onchange="applyContextChanges()">
-                    <option value="item">Предмет</option>
-                    <option value="token">Токен</option>
-                    <option value="gm">GM (Скрыто)</option>
-                </select>
-            </div>
-        </div>
-
-        <!-- Связка с другим токеном -->
-        <div style="margin-top: 4px;">
-            <label style="color:#eab308;">🔗 Привязать к тайлику:</label>
-            <select id="ctx-parent-id" onchange="applyContextChanges()"></select>
-        </div>
-
-        <div class="dm-only" style="margin-top: 4px;">
-            <label style="color:#22c55e; display:flex; align-items:center; gap:5px; cursor:pointer;">
-                <input type="checkbox" id="ctx-show-hp" onchange="applyContextChanges()"> Показывать здоровье
-            </label>
-        </div>
-        
-        <label style="margin-top: 6px;">Состояния (клик для выборки)</label>
-        <div class="status-toggle-grid">
-            <span class="status-badge" data-status="dead" onclick="toggleStatusInCtx('dead')">💀</span>
-            <span class="status-badge" data-status="poisoned" onclick="toggleStatusInCtx('poisoned')">🤢</span>
-            <span class="status-badge" data-status="stunned" onclick="toggleStatusInCtx('stunned')">💫</span>
-            <span class="status-badge" data-status="fire" onclick="toggleStatusInCtx('fire')">🔥</span>
-            <span class="status-badge" data-status="freezed" onclick="toggleStatusInCtx('freezed')">❄️</span>
-            <span class="status-badge" data-status="shocked" onclick="toggleStatusInCtx('shocked')">⚡</span>
-            <span class="status-badge" data-status="shielded" onclick="toggleStatusInCtx('shielded')">🛡️</span>
-            <span class="status-badge" data-status="invisible" onclick="toggleStatusInCtx('invisible')">👁️</span>
-            <span class="status-badge" data-status="sleep" onclick="toggleStatusInCtx('sleep')">💤</span>
-        </div>
-
-        <label style="color:#22c55e; margin-top:4px;" id="lbl-auras">Ауры (Радиус ft)</label>
-        <div class="context-row"><input type="number" id="aura1-rad" placeholder="0" oninput="applyContextChanges()"><input type="color" id="aura1-col" value="#ff0000" onchange="applyContextChanges()"></div>
-        <div class="context-row"><input type="number" id="aura2-rad" placeholder="0" oninput="applyContextChanges()"><input type="color" id="aura2-col" value="#00ff00" onchange="applyContextChanges()"></div>
-        <div class="context-row"><input type="number" id="aura3-rad" placeholder="0" oninput="applyContextChanges()"><input type="color" id="aura3-col" value="#0000ff" onchange="applyContextChanges()"></div>
-        
-        <button id="btn-delete-token" onclick="deleteSelectedTokens()" style="background:#ef4444; color:#fff; font-size:11px; margin-top:6px; width:100%;">❌ Удалить</button>
-    </div>
-
-    <div id="selection-box" class="selection-box"></div>
-
-    <div id="game-viewport" class="mode-select">
-        <div id="table-surface">
-            <div id="map-container" class="active-layer-token">
-                <canvas id="fog-canvas"></canvas>
-                <canvas id="ruler-canvas"></canvas>
-                <img id="game-map" src="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200" alt="Карта">
-            </div>
-        </div>
-    </div>
-
-    <script src="app.js"></script>
+/* ===== СТАРТ ===== */
+buildMenu();buildDice();
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.tab').forEach(t=>t.hidden=t.id!==b.dataset.t)});
+const jn=new URLSearchParams(location.search).get('join');if(jn){show('s-join');$('jc').value=jn;$('jn').focus()}
+</script>
 </body>
 </html>
