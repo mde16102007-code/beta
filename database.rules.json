@@ -1,0 +1,35 @@
+{
+  "rules": {
+    "users": { "$u": { ".read": "auth.uid === $u", ".write": "auth.uid === $u" } },
+    "games": { "$g": {
+      ".write": "root.child('games/'+$g+'/meta/owner').val() === auth.uid",
+      "meta": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('owner').val() === auth.uid) || data.child('owner').val() === auth.uid)"
+      },
+      "maps": { ".read": "auth != null", ".write": "root.child('games/'+$g+'/meta/owner').val() === auth.uid" },
+      "assets": {
+        ".read": "auth != null",
+        ".write": "root.child('games/'+$g+'/meta/owner').val() === auth.uid",
+        "$a": { ".validate": "newData.isString() && newData.val().length < 8000000" }
+      },
+      "tokens": { ".read": "auth != null", "$m": { "$t": {
+        ".write": "root.child('games/'+$g+'/meta/owner').val() === auth.uid || (auth != null && data.exists() && (data.child('own').val() === auth.uid || data.child('own').val() === 'all') && (!newData.exists() || newData.child('own').val() === data.child('own').val()))"
+      } } },
+      "gm": {
+        ".read": "root.child('games/'+$g+'/meta/owner').val() === auth.uid",
+        ".write": "root.child('games/'+$g+'/meta/owner').val() === auth.uid",
+        "log": { ".write": "auth != null" }
+      },
+      "players": { ".read": "auth != null", "$u": {
+        ".write": "auth.uid === $u",
+        ".validate": "newData.isString() && newData.val().length <= 24"
+      } },
+      "log": { ".read": "auth != null", "$k": {
+        ".write": "auth != null && !data.exists()",
+        ".validate": "newData.hasChildren(['u','f','r']) && newData.child('u').isString() && newData.child('u').val().length <= 24 && newData.child('f').isString() && newData.child('f').val().length <= 80"
+      } },
+      "ruler": { ".read": "auth != null", ".write": "auth != null" }
+    } }
+  }
+}
