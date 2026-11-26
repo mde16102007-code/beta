@@ -96,6 +96,7 @@ body:not(.dm) .tok.gm{display:none}
     <button class="gold" onclick="dmStart()">Я Мастер</button>
     <button onclick="show('s-join')">Я Игрок</button></div>
   <div class="box" id="s-games" hidden><h2>Миры Мастера</h2>
+    <small style="color:#a1a1aa">Ваш идентификатор: <code id="myid" style="user-select:text;-webkit-user-select:text;word-break:break-all;color:#e4e4e7"></code> <button onclick="navigator.clipboard.writeText($('myid').textContent).then(()=>toast('Идентификатор скопирован'))" title="Копировать">📋</button></small>
     <div id="list"></div>
     <button onclick="newGame()">+ Создать мир</button>
     <div class="row"><button onclick="renGame()">Переименовать</button><button class="red" onclick="delGame()">Удалить</button></div>
@@ -184,7 +185,7 @@ function show(id){document.querySelectorAll('.box').forEach(b=>b.hidden=b.id!==i
 const ID=()=>db.ref().push().key;
 
 /* ===== ЛОББИ ===== */
-async function dmStart(){try{if(!auth.currentUser)await auth.signInAnonymously();S.uid=auth.currentUser.uid;await loadGames();show('s-games')}catch(x){toast('Ошибка входа: '+x.message)}}
+async function dmStart(){try{if(!auth.currentUser)await auth.signInAnonymously();S.uid=auth.currentUser.uid;$('myid').textContent=S.uid;await loadGames();show('s-games')}catch(x){toast('Ошибка входа: '+x.message)}}
 async function loadGames(){S.games=(await db.ref(`users/${S.uid}/games`).once('value')).val()||{};renderGames()}
 function renderGames(){const l=$('list');l.textContent='';
   const ids=Object.keys(S.games);if(!ids.length)l.textContent='Миров пока нет. Создайте первый.';
@@ -192,7 +193,8 @@ function renderGames(){const l=$('list');l.textContent='';
     d.className='gi'+(id===sel?' sel':'');a.textContent=S.games[id];c.textContent='Код: '+id;d.append(a,c);d.onclick=()=>{sel=id;renderGames()};l.append(d)})}
 async function newGame(){const n=(prompt('Название мира:')||'').trim().slice(0,60);if(!n)return;
   const id=db.ref('games').push().key,mid=ID();
-  await db.ref(`games/${id}/meta`).set({name:n,owner:S.uid,playerMap:mid});
+  try{await db.ref(`games/${id}/meta`).set({name:n,owner:S.uid,playerMap:mid})}
+  catch(x){return toast('Создавать миры может только владелец сайта. Передайте ему ваш идентификатор (показан выше).')}
   await db.ref().update({[`games/${id}/maps/${mid}`]:{name:'Локация 1',w:2100,h:1400,grid:70},[`users/${S.uid}/games/${id}`]:n});
   S.games[id]=n;sel=id;renderGames()}
 async function renGame(){if(!sel)return;const n=(prompt('Новое название:',S.games[sel])||'').trim().slice(0,60);if(!n)return;
