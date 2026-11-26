@@ -86,6 +86,7 @@ body:not(.dm) .tok.gm{display:none}
 #dg{grid-template-columns:repeat(3,1fr)}#log{flex:none;height:180px}
 #bgh{position:absolute;z-index:7;background:var(--b);border:2px solid #fff;border-radius:3px;cursor:nwse-resize;touch-action:none}
 #vw.on{background:var(--b);color:#000}
+.lx{float:right;padding:0 6px;font-size:11px;background:none;border:0;color:#a1a1aa}.lx:hover{color:#ef4444;background:none}
 </style>
 </head>
 <body oncontextmenu="return false">
@@ -118,7 +119,7 @@ body:not(.dm) .tok.gm{display:none}
     <button onclick="$('map').classList.toggle('grid')" title="Сетка">▦</button>
     <button class="dm" onclick="$('mp').hidden=!$('mp').hidden" title="Карты и размер поля">🗺</button>
     <button id="vw" onclick="asPlayer()" title="Посмотреть как игрок" hidden>👁</button>
-    <input type="file" id="mapfile" accept="image/*" hidden><input type="file" id="tokfile" accept="image/*" hidden>
+    <input type="file" id="mapfile" accept="image/*" hidden><input type="file" id="tokfile" accept="image/*" multiple hidden>
   </nav>
   <input id="zoom" type="range" min=".08" max="2.5" step=".02" value=".5" style="position:fixed;left:10px;bottom:14px;width:120px;z-index:50" aria-label="Масштаб">
   <section id="mp" class="pop dm" hidden>
@@ -126,6 +127,7 @@ body:not(.dm) .tok.gm{display:none}
     <select id="mapsel"></select>
     <div class="row"><button onclick="$('mapfile').click()">+ Карта</button><button onclick="mapOp('ren')" title="Переименовать">✏️</button><button class="red" onclick="mapOp('del')" title="Удалить">🗑</button></div>
     <button onclick="R('meta/playerMap').set(S.mid)">🚩 Игроки сюда</button>
+    <button onclick="gcAssets()" title="Удаляет картинки, которые не используются ни одной картой и токеном">🧹 Убрать лишние картинки</button>
     <label>Размер поля (клеток: ширина × высота)</label>
     <div class="row"><input id="bw" type="number" min="5" max="200"><input id="bh" type="number" min="5" max="200"></div>
     <label>Клетка на картинке, px (подгонка сетки)</label><input id="gpx" type="number" min="20" max="400">
@@ -144,7 +146,7 @@ body:not(.dm) .tok.gm{display:none}
         <div class="grid" id="dg"></div>
         <input id="fx" placeholder="2d6+4, 2d20kh1 — Enter">
         <label class="chk"><input type="checkbox" id="secret"> 🔒 Втайне</label>
-        <div id="log"></div>
+        <div id="log"></div><button class="dm" onclick="clearLog()">🗑 Очистить лог</button>
       </div>
       <div id="t2" class="tab" hidden><div id="init"></div><button class="gold dm" onclick="nextTurn()">Следующий ход ➔</button></div>
       <div id="t3" class="tab" hidden><div id="pl"></div><button onclick="invite()">🔗 Пригласить</button></div>
@@ -157,6 +159,7 @@ body:not(.dm) .tok.gm{display:none}
     <label class="dm">Управляет<select id="f-own"></select></label>
     <label class="chk dm"><input type="checkbox" id="f-showHp"> Показывать HP игрокам</label>
     <div id="stg"></div>
+    <button class="dm" onclick="dupTok()">⧉ Копия токена</button>
     <button class="red dm" onclick="killTok()">❌ Удалить токен</button>
   </div>
   <div id="dist" hidden></div>
@@ -195,7 +198,13 @@ async function newGame(){const n=(prompt('Название мира:')||'').trim
 async function renGame(){if(!sel)return;const n=(prompt('Новое название:',S.games[sel])||'').trim().slice(0,60);if(!n)return;
   await db.ref().update({[`games/${sel}/meta/name`]:n,[`users/${S.uid}/games/${sel}`]:n});S.games[sel]=n;renderGames()}
 async function delGame(){if(!sel||!confirm(`Удалить мир «${S.games[sel]}» навсегда?`))return;
-  await db.ref(`games/${sel}`).remove();await db.ref(`users/${S.uid}/games/${sel}`).remove();delete S.games[sel];sel=null;renderGames()}
+  const g=db.ref('games/'+sel);let st='данные';
+  try{const u={maps:null,assets:null,gm:null,ruler:null},tk=await g.child('tokens').once('value');
+    tk.forEach(m=>{m.forEach(t=>{u[`tokens/${m.key}/${t.key}`]=null})});await g.update(u);
+    st='журнал';try{await g.child('log').remove()}catch(e){}
+    st='мир';await g.child('meta').remove();await db.ref(`users/${S.uid}/games/${sel}`).remove();
+    delete S.games[sel];sel=null;renderGames()}
+  catch(x){toast(`Не удалось удалить мир (шаг «${st}»): `+x.message)}}
 async function join(){if(S.joining)return;const id=$('jc').value.trim();if(!$('jn').value.trim())return toast('Введите ваше имя');if(!id)return toast('Введите код комнаты');
   S.joining=1;
   try{if(!S.pApp){S.pApp=firebase.apps.find(a=>a.name==='player')||firebase.initializeApp(CFG,'player');auth=S.pApp.auth();db=S.pApp.database();await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);await new Promise(r=>{const u=auth.onAuthStateChanged(()=>{u();r()})})}
@@ -218,8 +227,8 @@ async function enter(id){
     else applyMap();
     renderMaps()});
   
-  R('log').limitToLast(50).on('child_added',s=>addLog(s.val()));
-  if(S.isDM)R('gm/log').on('child_added',s=>addLog(s.val()));
+  const lq=R('log').limitToLast(50);lq.on('child_added',s=>addLog({...s.val(),k:s.key}));lq.on('child_removed',s=>{const e=document.querySelector(`#log p[data-k="${s.key}"]`);if(e)e.remove()});
+  if(S.isDM){const gq=R('gm/log');gq.on('child_added',s=>addLog({...s.val(),k:s.key,b:'gm/log'}));gq.on('child_removed',s=>{const e=document.querySelector(`#log p[data-k="${s.key}"]`);if(e)e.remove()});R('log').once('value').then(sn=>{const k=[];sn.forEach(c=>{k.push(c.key)});if(k.length>200){const u={};k.slice(0,k.length-100).forEach(x=>u['log/'+x]=null);G().update(u).catch(()=>{})}})}
   R('ruler').on('value',s=>{S.rulers=s.val()||{};redrawRulers()});R('ruler/'+S.uid).onDisconnect().remove();
 }
 
@@ -257,21 +266,29 @@ async function mapOp(op){const m=S.maps[S.mid];if(!S.isDM||!m)return;
     try{st='переключение';S.want=rest[0];if(S.meta.playerMap===mid)await R('meta/playerMap').set(rest[0]);
       st='токены';const u={};for(const b of ['tokens','gm']){const sn=await R(`${b}/${mid}`).once('value');sn.forEach(c=>{u[`${b}/${mid}/${c.key}`]=null})}if(Object.keys(u).length)await G().update(u);
       st='карта';await R(`maps/${mid}`).remove();
-      st='картинка';if(m.img)await R(`assets/${m.img}`).remove()}
+      st='картинка';if(m.img&&!Object.values(S.maps).some(o=>o!==m&&o.img===m.img))await R(`assets/${m.img}`).remove()}
     catch(x){S.want=null;toast(`Не удалось удалить карту (шаг «${st}»): `+x.message)}}}
 $('mapfile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
-  try{const c=await compress(f,4096,.92),a=ID(),mid=ID(),cols=30,rows=Math.max(5,Math.round(cols*c.h/c.w));
+  try{if(Object.keys(S.maps).length>=25)throw new Error('максимум 25 карт в мире');const c=await compress(f,4096,.9,2.2e6),a=aid(c.url),mid=ID(),cols=30,rows=Math.max(5,Math.round(cols*c.h/c.w));
     await G().update({[`assets/${a}`]:c.url,[`maps/${mid}`]:{name:f.name.replace(/\.\w+$/,'').slice(0,40),img:a,w:cols*70,h:rows*70,grid:70}});
     S.want=mid}catch(x){toast('Не удалось загрузить карту: '+x.message)}};
-function compress(f,max,q){return new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const k=Math.min(1,max/Math.max(i.width,i.height)),c=document.createElement('canvas');
-  c.width=Math.round(i.width*k);c.height=Math.round(i.height*k);c.getContext('2d').drawImage(i,0,0,c.width,c.height);URL.revokeObjectURL(i.src);
-  let u=c.toDataURL('image/webp',q);while(u.length>7e6&&q>.5){q-=.1;u=c.toDataURL('image/webp',q)}ok({url:u,w:c.width,h:c.height})};i.onerror=()=>no(new Error('не картинка'));i.src=URL.createObjectURL(f)})}
+const hash=s=>{let a=0xdeadbeef,b=0x41c6ce57;for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a=Math.imul(a^c,2654435761);b=Math.imul(b^c,1597334677)}a=Math.imul(a^(a>>>16),2246822507)^Math.imul(b^(b>>>13),3266489909);b=Math.imul(b^(b>>>16),2246822507)^Math.imul(a^(a>>>13),3266489909);return 4294967296*(2097151&b)+(a>>>0)};
+const aid=u=>'a'+hash(u).toString(36)+u.length.toString(36);
+function compress(f,max,q,lim=7e6){return new Promise((ok,no)=>{if(f.size>25e6)return no(new Error('файл больше 25 МБ'));const i=new Image();
+  i.onload=()=>{let k=Math.min(1,max/Math.max(i.width,i.height)),u;const c=document.createElement('canvas');
+    const draw=()=>{c.width=Math.round(i.width*k);c.height=Math.round(i.height*k);c.getContext('2d').drawImage(i,0,0,c.width,c.height)};
+    draw();u=c.toDataURL('image/webp',q);
+    for(let n=0;u.length>lim&&n<8;n++){if(q>.6)q-=.07;else{k*=.85;draw()}u=c.toDataURL('image/webp',q)}
+    URL.revokeObjectURL(i.src);ok({url:u,w:c.width,h:c.height})};
+  i.onerror=()=>no(new Error('это не картинка'));i.src=URL.createObjectURL(f)})}
 
 /* ===== ТОКЕНЫ ===== */
-$('tokfile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f||!S.isDM)return;
-  try{const c=await compress(f,512,.9),a=ID(),id=ID(),p=toMap({clientX:innerWidth/2,clientY:innerHeight/2});
-    await G().update({[`assets/${a}`]:c.url,[`tokens/${S.mid}/${id}`]:{id,n:'Токен',img:a,x:snap(p.x),y:snap(p.y),sz:1,rot:0,hp:10,mhp:10,ac:'',ini:0,layer:'token',own:'dm',showHp:false}})}
-  catch(x){toast('Не удалось добавить токен: '+x.message)}};
+$('tokfile').onchange=async e=>{const fs=[...e.target.files].slice(0,20);e.target.value='';if(!fs.length||!S.isDM)return;
+  try{if(Object.keys(S.toks).length+fs.length>300)throw new Error('максимум 300 токенов на карте');
+    const p=toMap({clientX:innerWidth/2,clientY:innerHeight/2}),g=S.maps[S.mid].grid,u={};let i=0;
+    for(const f of fs){const c=await compress(f,384,.85,8e4),a=aid(c.url),id=ID();if(!S.assets[a]){S.assets[a]=c.url;u[`assets/${a}`]=c.url}
+      const t={id,n:f.name.replace(/\.\w+$/,'').slice(0,30),img:a,x:snap(p.x)+i*g,y:snap(p.y),sz:1,rot:0,hp:10,mhp:10,ac:'',ini:0,layer:'token',own:'dm',showHp:false};u[path(t)]=t;i++}
+    await G().update(u)}catch(x){toast('Не удалось добавить токен: '+x.message)}};
 function upTok(t){if(!t)return;if(drag&&drag.k==='tok'&&drag.moved&&drag.t.id===t.id)return;
   S.toks[t.id]=t;renderTok(t);if(sel===t.id&&!$('menu').hidden&&!$('menu').contains(document.activeElement))fillMenu();renderInit()}
 function rmTok(id,b){const t=S.toks[id];if(t&&(t.layer==='gm')!==(b==='gm'))return;
@@ -292,6 +309,12 @@ function write(t,prev){const u={};if(prev&&(prev==='gm')!==(t.layer==='gm'))u[pa
 function edit(k,v){const t=S.toks[sel];if(!t||!can(t))return;
   if(k==='layer'){const p=t.layer;t.layer=v;renderTok(t);return write(t,p)}
   t[k]=v;renderTok(t);renderInit();clearTimeout(D[k]);D[k]=setTimeout(()=>G().child(path(t)).update({[k]:v}),250)}
+function dupTok(){const t=S.toks[sel];if(!dm()||!t)return;const g=S.maps[S.mid].grid,id=ID(),n={...t,id,x:t.x+g,y:t.y+g};G().update({[path(n)]:JSON.parse(JSON.stringify(n))})}
+async function gcAssets(){if(!S.isDM||!confirm('Удалить картинки, которые больше не используются? (один раз скачает все картинки мира)'))return;
+  try{const used=new Set();Object.values(S.maps).forEach(m=>m.img&&used.add(m.img));
+    for(const b of ['tokens','gm']){const sn=await R(b).once('value');sn.forEach(mp=>{mp.forEach(t=>{const v=t.val();if(v&&v.img)used.add(v.img)})})}
+    const u={};let n=0;(await R('assets').once('value')).forEach(c=>{if(!used.has(c.key)){u['assets/'+c.key]=null;n++}});
+    if(n)await G().update(u);toast(`Удалено лишних картинок: ${n}`)}catch(x){toast('Ошибка очистки: '+x.message)}}
 function killTok(){const t=S.toks[sel];if(!dm()||!t)return;G().child(path(t)).remove()}
 function buildMenu(){FLD.forEach(([k,l,ty,step,dm])=>{const lb=document.createElement('label'),i=document.createElement('input');
   lb.textContent=l;i.type=ty;i.id='f-'+k;if(step)i.step=step;if(dm)lb.className='dm';
@@ -334,15 +357,20 @@ function parseRoll(f){f=f.toLowerCase().replace(/\s/g,'');if(!/^[+-]?[^+-]+([+-]
       tot+=sg*r.reduce((a,v,i)=>a+(k[i]?v:0),0);terms.push({s:sg,f:b,fc,r,k})}
     else if(/^\d+$/.test(b)){tot+=sg*+b;terms.push({s:sg,v:+b})}else return null}
   return{tot,terms}}
-function doRoll(f){if(!S.gid)return;const r=parseRoll(f);if(!r)return toast('Формула вида 2d6+4, 2d20kh1 или 4d6kh3+2');
+function doRoll(f){if(!S.gid)return;if(f.length>80)return toast('Формула слишком длинная (до 80 символов)');const r=parseRoll(f);if(!r)return toast('Формула вида 2d6+4, 2d20kh1 или 4d6kh3+2');
   const l={u:S.name,f,t:r.terms,r:r.tot,s:$('secret').checked?1:0,d:S.isDM?1:0,ts:firebase.database.ServerValue.TIMESTAMP};
   if(l.s){addLog(l);if(!S.isDM)R('gm/log').push(l)}else R('log').push(l)}
+function delLog(p){const k=p.dataset.k;if(!k)return p.remove();
+  R((p.dataset.b||'log')+'/'+k).remove().catch(x=>toast('Не удалось удалить бросок: '+x.message+'. Обновите правила базы.'))}
+async function clearLog(){if(!S.isDM||!confirm('Очистить весь лог бросков?'))return;
+  try{await R('log').remove();await R('gm/log').remove();$('log').textContent=''}catch(x){toast('Не удалось очистить лог: '+x.message+'. Обновите правила базы.')}}
 function addLog(l){const p=document.createElement('p'),mk=(tag,tx,c)=>{const e=document.createElement(tag);e.textContent=tx;if(c)e.className=c;return e};
   if(l.d)p.append(mk('span','DM','tag'));if(l.s)p.append(mk('span','скрытно','tag sec'));
   p.append(mk('b',l.u),` ${l.f}: `);
   (l.t||[]).forEach((t,i)=>{p.append(i||t.s<0?(t.s<0?' − ':' + '):'');
     if(t.r){p.append('[');t.r.forEach((v,j)=>{if(j)p.append(', ');p.append(mk('span',v,!t.k[j]?'drop':v===t.fc?'crit':v===1?'fumble':''))});p.append(']')}else p.append(String(t.v))});
-  p.append(' = ',mk('b',l.r));const lg=$('log');lg.prepend(p);while(lg.children.length>60)lg.lastChild.remove()}
+  p.append(' = ',mk('b',l.r));if(l.k){p.dataset.k=l.k;p.dataset.b=l.b||'log'}
+  const x=mk('button','✕','lx dm');x.title='Удалить бросок';x.onclick=()=>delLog(p);p.prepend(x);const lg=$('log');lg.prepend(p);while(lg.children.length>60)lg.lastChild.remove()}
 function buildDice(){const g=$('dg');
   [4,6,8,10,12,20,100].forEach(n=>{const b=document.createElement('button');b.textContent='d'+n;
     b.onclick=()=>doRoll(`${Math.max(1,+$('dc').value||1)}d${n}${bonus()}`);g.append(b)});
